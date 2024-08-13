@@ -49,7 +49,7 @@
 
 // version and copyright header messages
 #define FCG_LIC_STD_HEADER1     "FasterCap License"
-#define FCG_HEADER_VERSION      "FasterCap version 6.0.7"
+#define FCG_HEADER_VERSION      "FasterCap version 6.0.8"
 #define FCG_HEADER_COPYRIGHT    "Copyright 2019 FastFieldSolvers S.R.L."
 #define FCG_HEADER_WEBSITE      "http://www.fastfieldsolvers.com, All Rights reserved"
 // license text file name
