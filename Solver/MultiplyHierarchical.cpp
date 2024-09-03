@@ -212,11 +212,11 @@ int CMultHier::ComputePanelPotentials_2fast()
                 // (but not for the first node) or on the right. In this case, skip
                 if(localLinkIndex >= linkIndex) {
                     localChunk = localLinkIndex / AUTOREFINE_LINK_CHUNK_SIZE;
-                    localPosInChunk = localLinkIndex % AUTOREFINE_LINK_CHUNK_SIZE;
                     // adjust chunk to position within the current block
                     localChunk -= chunkAdjustmentShift;
                     // if still within the boundary
                     if(localChunk < linkChunkNum) {
+                        localPosInChunk = localLinkIndex % AUTOREFINE_LINK_CHUNK_SIZE;
                         // node potentials have already been zeroed in ComputePanelCharges_fast()
                         node->m_dPotential += (localPanelPtrLinks[localChunk][localPosInChunk])->m_dCharge * localPotCoeffLinks[localChunk][localPosInChunk];
                         ASSERT(fabs(node->m_dPotential) < 1E20);
