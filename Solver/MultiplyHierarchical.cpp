@@ -164,16 +164,19 @@ int CMultHier::ComputePanelPotentials_2fast()
 	}
 
     // 'm_ulLinkChunkNum' is the number of chunks per block
-    linksPerBlock = AUTOREFINE_LINK_CHUNK_SIZE * m_ulLinkChunkNum[m_ucInteractionLevel];
+    const unsigned long linkChunkNum = m_ulLinkChunkNum[m_ucInteractionLevel];
+    linksPerBlock = AUTOREFINE_LINK_CHUNK_SIZE * linkChunkNum;
+    const unsigned long linksNum = m_ulLinksNum[m_ucInteractionLevel];
+    const unsigned long nodeNumPre0 = m_ulNodeNum[AUTOREFINE_HIER_PRE_0_LEVEL];
+    const unsigned long chunkAdjustmentShift = linkChunkNum * m_ulCurrBlock;
 
     // scan all links, in blocks
-	for(linkIndex=0, nodeIndex=0; linkIndex<GetLinksNum(); linkIndex += linksPerBlock)  {
-
+	for(linkIndex=0, nodeIndex=0; linkIndex < linksNum; linkIndex += linksPerBlock) {
         // load data from Mass Memory device (out of core)
         //
-        // determine in which block the current chunk is ('m_ulLinkChunkNum' is the number of chunks per block)
+        // determine in which block the current chunk is ('linkChunkNum' is the number of chunks per block)
         chunk = linkIndex / AUTOREFINE_LINK_CHUNK_SIZE;
-		block = chunk / m_ulLinkChunkNum[m_ucInteractionLevel];
+		block = chunk / linkChunkNum;
         // if not in current block
 		if(block != m_ulCurrBlock) {
 			ret = LoadLinks(block);
@@ -186,7 +189,7 @@ int CMultHier::ComputePanelPotentials_2fast()
         // but first we need to find where to stop (to avoid scanning all nodes every time)
         // note that 'nodeBlockEnd' will indicate one node more (both in cases we exit the for statement
         // normally or due to the break)
-        for(nodeBlockEnd=nodeIndex; nodeBlockEnd<m_ulNodeNum[AUTOREFINE_HIER_PRE_0_LEVEL]; nodeBlockEnd++) {
+        for(nodeBlockEnd=nodeIndex; nodeBlockEnd < nodeNumPre0; nodeBlockEnd++) {
             // if going into next chunk, we stop here
             if(m_pNodes[nodeBlockEnd]->m_ulLinkIndexEnd[m_ucInteractionLevel] >= linkIndex+linksPerBlock) {
                 nodeBlockEnd++;
@@ -200,20 +203,23 @@ int CMultHier::ComputePanelPotentials_2fast()
         for(i=nodeIndex; i<(long)nodeBlockEnd; i++) {
             unsigned long localLinkIndex, localChunk, localPosInChunk;
             // perform summation
-            for(localLinkIndex = m_pNodes[i]->m_ulLinkIndexStart[m_ucInteractionLevel]; localLinkIndex < m_pNodes[i]->m_ulLinkIndexEnd[m_ucInteractionLevel]; localLinkIndex++) {
-
+            CAutoElement *node = m_pNodes[i];
+            unsigned long linkIndexEnd = node->m_ulLinkIndexEnd[m_ucInteractionLevel];
+            for(localLinkIndex = node->m_ulLinkIndexStart[m_ucInteractionLevel];
+                localLinkIndex < linkIndexEnd;
+                localLinkIndex++) {
                 // some of the links could be outside the boundary of the chunk, either on the left
                 // (but not for the first node) or on the right. In this case, skip
                 if(localLinkIndex >= linkIndex) {
                     localChunk = localLinkIndex / AUTOREFINE_LINK_CHUNK_SIZE;
                     localPosInChunk = localLinkIndex % AUTOREFINE_LINK_CHUNK_SIZE;
                     // adjust chunk to position within the current block
-                    localChunk -= m_ulLinkChunkNum[m_ucInteractionLevel] * m_ulCurrBlock;
+                    localChunk -= chunkAdjustmentShift;
                     // if still within the boundary
-                    if(localChunk < m_ulLinkChunkNum[m_ucInteractionLevel]) {
+                    if(localChunk < linkChunkNum) {
                         // node potentials have already been zeroed in ComputePanelCharges_fast()
-                        m_pNodes[i]->m_dPotential += (localPanelPtrLinks[localChunk][localPosInChunk])->m_dCharge * localPotCoeffLinks[localChunk][localPosInChunk];
-                        ASSERT(fabs(m_pNodes[i]->m_dPotential) < 1E20);
+                        node->m_dPotential += (localPanelPtrLinks[localChunk][localPosInChunk])->m_dCharge * localPotCoeffLinks[localChunk][localPosInChunk];
+                        ASSERT(fabs(node->m_dPotential) < 1E20);
                     }
                 }
             }
