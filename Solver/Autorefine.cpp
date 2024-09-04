@@ -796,14 +796,20 @@ int CAutoRefine::AutoRefineLinks(CAutoRefGlobalVars globalVars)
 
 		// now calculate coefficients of potential
 
+        // 'm_ulLinkChunkNum' is the number of chunks per block
+        const unsigned long linkChunkNum = m_ulLinkChunkNum[m_ucInteractionLevel];
+        const unsigned long chunkAdjustmentShift = linkChunkNum * m_ulCurrBlock;
+
 		#pragma omp parallel for
 		for(i=nodeIndex; i<(long)nodeBlockEnd; i++) {
 			unsigned long localLinkIndex, localChunk, localPosInChunk;
 			CAutoElement *element2;
 			double potestim1;
 
+            CAutoElement *node = m_pNodes[i];
+            
 			// perform summation
-			for(localLinkIndex = m_pNodes[i]->m_ulLinkIndexStart[m_ucInteractionLevel]; localLinkIndex < m_pNodes[i]->m_ulLinkIndexEnd[m_ucInteractionLevel]; localLinkIndex++) {
+			for(localLinkIndex = node->m_ulLinkIndexStart[m_ucInteractionLevel]; localLinkIndex < node->m_ulLinkIndexEnd[m_ucInteractionLevel]; localLinkIndex++) {
 
 				// some of the links could be outside the boundary of the chunk, either on the left
 				// (but not for the first node) or on the right. In this case, skip
@@ -811,13 +817,13 @@ int CAutoRefine::AutoRefineLinks(CAutoRefGlobalVars globalVars)
 					localChunk = localLinkIndex / AUTOREFINE_LINK_CHUNK_SIZE;
 					localPosInChunk = localLinkIndex % AUTOREFINE_LINK_CHUNK_SIZE;
 					// adjust chunk to position within the current block
-					localChunk -= m_ulLinkChunkNum[m_ucInteractionLevel] * m_ulCurrBlock;
+					localChunk -= chunkAdjustmentShift;
 					// if still within the boundary
-					if(localChunk < m_ulLinkChunkNum[m_ucInteractionLevel]) {
+					if(localChunk < linkChunkNum) {
 						// interacting panels have already been identified
 						element2 = m_pdPanelPtrLinks[m_ucInteractionLevel][localChunk][localPosInChunk];
 						// calculate coefficient of potential
-						PotEstimateOpt(m_pNodes[i], element2, potestim1);
+						PotEstimateOpt(node, element2, potestim1);
 						// and store it
 						m_dPotCoeffLinks[m_ucInteractionLevel][localChunk][localPosInChunk] = potestim1;
 					}
