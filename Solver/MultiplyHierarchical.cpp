@@ -219,7 +219,11 @@ int CMultHier::ComputePanelPotentials_2fast()
                         localPosInChunk = localLinkIndex % AUTOREFINE_LINK_CHUNK_SIZE;
                         // node potentials have already been zeroed in ComputePanelCharges_fast()
                         node->m_dPotential += (localPanelPtrLinks[localChunk][localPosInChunk])->m_dCharge * localPotCoeffLinks[localChunk][localPosInChunk];
+                        
+                        // this is a hotspot, only check this in debug mode…
+#if _DEBUG
                         ASSERT(fabs(node->m_dPotential) < 1E20);
+#endif
                     }
                 }
             }
