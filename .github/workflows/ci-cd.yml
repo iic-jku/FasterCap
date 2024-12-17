@@ -1,0 +1,285 @@
+name: Multi-platform C++ build
+
+on:
+  push:
+    branches: [ "master" ]
+    paths-ignore:
+       - '.gitignore'
+       - '**.md'
+       - '*.sh'
+  pull_request:
+    branches: [ "master" ]
+    paths-ignore:
+       - '.gitignore'
+       - '**.md'
+       - '*.sh'
+  workflow_call:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+concurrency:
+  group: ${{ github.repository }}-${{ github.event.number || github.head_ref || github.sha }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  build_and_test:
+    name: Build ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          - arch: x86_64-apple-darwin
+            os: macos-latest
+            cpu: x86_64
+            artifact: FasterCap-nightly.macos-amd64.tar.gz
+            c_compiler: clang
+            cpp_compiler: clang
+          - arch: aarch64-apple-darwin          
+            os: macos-latest
+            cpu: arm64
+            artifact: FasterCap-nightly.macos-arm64.tar.gz
+            c_compiler: clang
+            cpp_compiler: clang
+          - arch: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            cpu: x86_64
+            artifact: FasterCap-nightly.linux-amd64.tar.gz
+            c_compiler: gcc
+            cpp_compiler: g++
+#          - arch: aarch64-unknown-linux-gnu
+#            os: ubuntu-latest
+#            cpu: aarch64
+#            artifact: FasterCap-nightly.linux-arm64.tar.gz
+#            c_compiler: aarch64-linux-gnu-gcc
+#            cpp_compiler: aarch64-linux-gnu-g++
+          - arch: x86_64-pc-windows-msvc
+            os: windows-latest
+            cpu: x86_64
+            artifact: FasterCap-nightly.windows-amd64.tar.gz
+            c_compiler: clang
+            cpp_compiler: clang
+
+    steps:
+
+    - name: "Install deps on windows"
+      if: contains(matrix.arch, 'windows')
+      run: |
+        mkdir -p deps/wxWidgets 
+        mkdir -p deps/openblas
+        C:/msys64/usr/bin/wget https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.6/wxWidgets-3.2.6-headers.7z
+        C:/msys64/usr/bin/wget https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.6/wxMSW-3.2.6_vc14x_x64_Dev.7z
+        C:/msys64/usr/bin/wget https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.28/OpenBLAS-0.3.28-x64.zip
+        7z x wxWidgets-3.2.6-headers.7z -odeps/wxWidgets
+        7z x wxMSW-3.2.6_vc14x_x64_Dev.7z -odeps/wxWidgets
+        7z x OpenBLAS-0.3.28-x64.zip -odeps/blas
+        $vcdir = $(vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
+        $msvc = $(join-path $vcdir $('VC\Tools\MSVC\'+$(gc -raw $(join-path $vcdir 'VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt')).Trim()))
+        $lib =  $(join-path $msvc 'bin\Hostx64\x64\lib.exe')
+        & $lib /machine:x64 "/def:deps/blas/lib/libopenblas.def" "/out:deps/blas/lib/openblas.lib" /name:openblas.dll
+        
+    - uses: actions/checkout@v4
+      with:
+        path: 'FastFieldSolvers/FasterCap'
+
+    - name: "Checkout LinAlgebra"
+      uses: actions/checkout@v4
+      with:
+        repository: 'martinjankoehler/LinAlgebra'
+        path: 'FastFieldSolvers/LinAlgebra'
+
+    - name: "Checkout Geometry"
+      uses: actions/checkout@v4
+      with:
+        repository: 'ediloren/Geometry'
+        path: 'FastFieldSolvers/Geometry'
+
+    - name: "Prepare environment"
+      if: contains(matrix.arch, 'windows') && endsWith(matrix.arch, '-gnu')
+      run: echo "C:\msys64\usr\bin;$Env:Path" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
+
+    - name: "[C++] Ccache for gh actions"
+      uses: hendrikmuhs/ccache-action@v1.2.14
+      with:
+        key: ${{ github.job }}-${{ matrix.arch }}  # Eg. "some_build-ubuntu-latest"
+        
+    - name: "Set reusable strings"
+      # Turn repeated input strings (such as the build output directory) into step outputs.
+      # These step outputs can be used throughout the workflow file.
+      id: strings
+      shell: bash
+      run: |
+        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+    - name: "Install deps on linux"
+      if: contains(matrix.arch, 'linux')
+      run: | 
+        sudo apt-get -y update
+        sudo apt-get install -y libomp-dev
+        sudo apt-get install -y wx3.0-headers  libwxbase3.0-dev
+
+    - name: "Install deps on linux (ARM64 Cross Compile)"
+      if: contains(matrix.arch, 'linux') && contains(matrix.arch, 'aarch64') && endsWith(matrix.arch, '-gnu')
+      run: | 
+        sudo apt-get install -y libc6-dev-arm64-cross g++-aarch64-linux-gnu gcc-aarch64-linux-gnu gfortran-aarch64-linux-gnu
+
+    - name: "Install deps on macos"
+      if: contains(matrix.arch, 'apple') && endsWith(matrix.arch, '-darwin')
+      run: |
+        brew update
+        brew install libomp wxwidgets
+
+    - name: "[C++] Cache CMake dependency source code"
+      uses: actions/cache@v4
+      env:
+        cache-name: cache-cmake-dependency-sources
+      with:
+        # CMake cache is at ${{github.workspace}}/build/_deps but we only will cache folders ending in '-src' to cache source code
+        path: ${{github.workspace}}/build/_deps/*-src
+        # Cache hash is dependent on CMakeLists files anywhere as these can change what's in the cache, as well as cmake modules files
+        key: ${{ env.cache-name }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
+        # it's acceptable to reuse caches for different CMakeLists content if exact match is not available and unlike build caches, we
+        # don't need to restrict these by OS or compiler as it's only source code that's being cached
+        restore-keys: |
+          ${{ env.cache-name }}-
+
+    - name: "[C++] Cache CMake dependency build objects"
+      uses: actions/cache@v4
+      env:
+        cache-name: cache-cmake-dependency-builds
+      with:
+        # CMake cache is at ${{github.workspace}}/build/_deps but we only care about the folders ending in -build or -subbuild
+        path: |
+          ${{github.workspace}}/build/_deps/*-build
+          ${{github.workspace}}/build/_deps/*-subbuild
+        # Cache hash is dependent on CMakeLists files anywhere as these can change what's in the cache, as  well as cmake modules files
+        key: ${{ env.cache-name }}-${{ matrix.arch }}-${{ matrix.cxx }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
+        # it's acceptable to reuse caches for different CMakeLists content if exact match is not available
+        # as long as the OS and Compiler match exactly
+        restore-keys: |
+          ${{ env.cache-name }}-${{ matrix.arch }}-${{ matrix.cxx }}-
+
+    - name: "Restore cached OpenBLAS build (Linux/ARM64 only)"
+      if: contains(matrix.arch, 'linux') && contains(matrix.arch, 'aarch64')
+      id: cache-openblas-build
+      uses: actions/cache/restore@v4
+      with:
+        path: openblas-build
+        key: ${{ matrix.arch }}-openblas-build
+
+    - name: "Build OpenBLAS (Linux/ARM64 only)"
+      if: steps.cache-openblas-build.outputs.cache-hit != 'true' && contains(matrix.arch, 'linux') && contains(matrix.arch, 'aarch64')
+      run: |
+          wget https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.28/OpenBLAS-0.3.28.tar.gz
+          tar xzvf OpenBLAS-0.3.28.tar.gz
+          export OPENBLAS_HOME=$PWD/openblas-build
+          cd OpenBLAS-0.3.28
+          make TARGET=ARMV8 CC=aarch64-linux-gnu-gcc FC=aarch64-linux-gnu-gfortran HOSTCC=gcc NO_LAPACK=1 -j $(nproc)
+          sudo make PREFIX=$OPENBLAS_HOME install
+          cd ..
+
+    - name: "Save cached OpenBLAS build (Linux/ARM64 only)"
+      if: (success() || failure()) && contains(matrix.arch, 'linux') && contains(matrix.arch, 'aarch64')
+      uses: actions/cache/save@v4
+      with:
+        path: openblas-build
+        key: ${{ matrix.arch }}-openblas-build
+
+    - name: "[C++] Configure CMake (macOS)"
+      if: contains(matrix.arch, 'apple') && endsWith(matrix.arch, '-darwin')
+      run: >
+        export OpenMP_ROOT=$(brew --prefix)/opt/libomp;
+        cmake 
+        -B ${{ steps.strings.outputs.build-output-dir }}
+        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        -DFASTFIELDSOLVERS_HEADLESS=ON
+        -DwxWidgets_CONFIG_EXECUTABLE="$(brew --prefix)/bin/wx-config"
+        -S FastFieldSolvers/FasterCap
+
+    - name: "[C++] Configure CMake (Linux/ARM64)"
+      if: contains(matrix.arch, 'linux') && contains(matrix.arch, 'aarch64')
+      run: >
+        export OpenBLAS_HOME=$PWD/openblas-build; 
+        cmake 
+        -B ${{ steps.strings.outputs.build-output-dir }}
+        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        -DFASTFIELDSOLVERS_HEADLESS=ON
+        -DwxWidgets_CONFIG_EXECUTABLE=/usr/bin/wx-config
+        -DCMAKE_PREFIX_PATH=$OpenBLAS_HOME
+        -S FastFieldSolvers/FasterCap
+          
+    - name: "[C++] Configure CMake (Linux/x86_64)"
+      if: contains(matrix.arch, 'linux') && contains(matrix.arch, 'x86_64')
+      run: >
+        cmake 
+        -B ${{ steps.strings.outputs.build-output-dir }}
+        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        -DFASTFIELDSOLVERS_HEADLESS=ON
+        -DwxWidgets_CONFIG_EXECUTABLE=/usr/bin/wx-config
+        -S FastFieldSolvers/FasterCap
+
+    - name: "[C++] Configure CMake (Windows)"
+      if: startswith(matrix.os, 'windows')
+      run: >
+        cmake 
+        -B ${{ steps.strings.outputs.build-output-dir }}
+        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        -DFASTFIELDSOLVERS_HEADLESS=ON
+        -DwxWidgets_ROOT_DIR=deps/wxWidgets 
+        -DBLAS_ROOT=${{ github.workspace }}/deps/blas
+        -DBLAS_LIBRARIES=${{ github.workspace }}/deps/blas/lib/openblas.lib
+        -S FastFieldSolvers/FasterCap
+
+    - name: "[C++] Build"
+      run: >
+        cmake 
+        --build ${{ steps.strings.outputs.build-output-dir }} 
+        --config Release
+
+    - name: "[C++] Copy DLLs (Windows)"
+      if: startswith(matrix.os, 'windows')
+      run: |
+        cp deps/wxWidgets/lib/vc14x_x64_dll/wxbase32u_vc14x_x64.dll build/Release/
+        cp deps/blas/bin/libopenblas.dll build/Release/openblas.dll       
+
+    - name: "[C++] Store build artifacts (UNIX)"
+      if: contains(matrix.arch, 'linux') || contains(matrix.arch, 'darwin')
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact }}
+        path: build/FasterCap
+        retention-days: 7
+        if-no-files-found: error
+        
+    - name: "[C++] Store build artifacts (Windows)"
+      if: startswith(matrix.os, 'windows')
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact }}
+        path: build/Release
+        retention-days: 7
+        if-no-files-found: error
+
