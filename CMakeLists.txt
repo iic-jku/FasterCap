@@ -47,6 +47,11 @@ if (APPLE)
 endif()
 
 find_package(BLAS REQUIRED)
+if ("${BLAS_INCLUDE_DIRS}" STREQUAL "")
+# fallback for CI/CD environment
+   SET(BLAS_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/../../deps/blas/include)
+endif()
+message(STATUS "BLAS found, Includes: ${BLAS_INCLUDE_DIRS}")
 include_directories(${BLAS_INCLUDE_DIRS})
 set(EXTRA_LIBS ${EXTRA_LIBS} ${BLAS_LIBRARIES})
 
