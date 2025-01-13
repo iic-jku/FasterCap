@@ -20,13 +20,13 @@ jobs:
           - arch: x86_64-apple-darwin
             os: macos-latest
             cpu: x86_64
-            artifact: FasterCap-nightly.macos-amd64.tar.gz
+            artifact_template: 'FasterCap-<<VERSION>>.macos-amd64.tar.gz'
             c_compiler: clang
             cpp_compiler: clang
           - arch: aarch64-apple-darwin          
             os: macos-latest
             cpu: arm64
-            artifact: FasterCap-nightly.macos-arm64.tar.gz
+            artifact_template: 'FasterCap-<<VERSION>>.macos-arm64.tar.gz'
             c_compiler: clang
             cpp_compiler: clang
           - arch: x86_64-unknown-linux-gnu
@@ -35,7 +35,7 @@ jobs:
             apt_build_deps: libomp-dev wx3.0-headers libwxbase3.0-dev
             apt_install_deps: 'libc6 (>= 2.35), libwxbase3.0'
             apt_arch: amd64
-            artifact: FasterCap-nightly.linux-ubuntu22-amd64.tar.gz
+            artifact_template: 'FasterCap-<<VERSION>>.linux-ubuntu22-amd64.tar.gz'
             c_compiler: gcc
             cpp_compiler: g++
           - arch: x86_64-unknown-linux-gnu
@@ -44,7 +44,7 @@ jobs:
             apt_build_deps: libomp-dev libopenblas-dev wx3.2-headers libwxgtk3.2-dev
             apt_install_deps: 'libc6 (>= 2.38), libwxbase3.2-1t64'
             apt_arch: amd64
-            artifact: FasterCap-nightly.linux-ubuntu24-amd64.tar.gz
+            artifact_template: 'FasterCap-<<VERSION>>.linux-ubuntu24-amd64.tar.gz'
             c_compiler: gcc
             cpp_compiler: g++
 #          - arch: aarch64-unknown-linux-gnu
@@ -53,13 +53,13 @@ jobs:
 #            apt_build_deps: libomp-dev wx3.2-headers libwxgtk3.2-dev
 #            apt_install_deps: 'TODO'
 #            apt_arch: aarch64
-#            artifact: FasterCap-nightly.linux-arm64.tar.gz
+#            artifact_template: 'FasterCap-<<VERSION>>.linux-ubuntu24-arm64.tar.gz'
 #            c_compiler: aarch64-linux-gnu-gcc
 #            cpp_compiler: aarch64-linux-gnu-g++
           - arch: x86_64-pc-windows-msvc
             os: windows-latest
             cpu: x86_64
-            artifact: FasterCap-nightly.windows-amd64.tar.gz
+            artifact_template: 'FasterCap-<<VERSION>>.windows-amd64.tar.gz'
             c_compiler: clang
             cpp_compiler: clang
 
@@ -97,21 +97,26 @@ jobs:
         repository: 'ediloren/Geometry'
         path: 'FastFieldSolvers/Geometry'
 
-    - name: 'Extract FasterCap Version (UNIX)'
-      if: contains(matrix.arch, 'linux') || contains(matrix.arch, 'darwin')
+    - name: 'Extract FasterCap Version'
       id: versioning
-      shell: bash
+      shell: python
       # Example, for a line:
       # #define FCG_HEADER_VERSION      "FasterCap version 6.0.8"
       # ... this would give us: 6.0.8
       run: |
-         FC_VERSION_LINE=$(grep FCG_HEADER_VERSION FastFieldSolvers/FasterCap/FasterCapGlobal.h)
-         if [ "${{ matrix.os }}" == "macos-latest" ]; then
-            FC_VERSION=$(echo $FC_VERSION_LINE |grep -Eo '\d+.\d+.\d+')
-         else
-            FC_VERSION=$(echo $FC_VERSION_LINE |grep -Po '\d+.\d+.\d+')
-         fi
-         echo "release_version=$FC_VERSION" >> "$GITHUB_OUTPUT"
+         import os
+         import re
+         pattern = re.compile(r'#define FCG_HEADER_VERSION .*(\d+\.\d+\.\d+[^"]*)".*')
+         with open('FastFieldSolvers/FasterCap/FasterCapGlobal.h', 'r') as f:
+           for line in f:
+             m = re.match(pattern, line.strip())
+             if m:
+               version = m.groups()[0]
+               artifact = '${{ matrix.artifact_template }}'.replace('<<VERSION>>', version)
+               with open(os.environ['GITHUB_OUTPUT'], 'a') as o:
+                  print(f"release_version={version}", file=o)
+                  print(f"artifact={artifact}", file=o)
+               break
     
     - name: "Prepare environment"
       if: contains(matrix.arch, 'windows') && endsWith(matrix.arch, '-gnu')
@@ -285,7 +290,7 @@ jobs:
       run: |
         mkdir assets
         pushd build
-        tar cvfz ../assets/${{ matrix.artifact }} FasterCap
+        tar cvfz ../assets/${{ steps.versioning.outputs.artifact }} FasterCap
         popd
 
     - name: "[C++] Archive artifacts (Windows)"
@@ -293,7 +298,7 @@ jobs:
       run: |
         mkdir assets
         pushd build/Release
-        tar cvfz ../../assets/${{ matrix.artifact }} *.*
+        tar cvfz ../../assets/${{ steps.versioning.outputs.artifact }} *.*
         popd
 
     - name: "Prepare Debian Packages Contents (Linux)"
@@ -319,12 +324,13 @@ jobs:
     - name: "Move Debian Packages into assets (Linux)"
       if: contains(matrix.arch, 'linux')
       run: |
-        mv "${{ steps.debian_package.outputs.file_name }}" assets/
+        DEBPKG="${{ steps.debian_package.outputs.file_name }}"
+        mv "$DEBPKG" assets/${DEBPKG/.deb/_${{ matrix.os }}.deb}
     
     - name: "[C++] Upload build artifacts"
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.artifact }}
+        name: ${{ steps.versioning.outputs.artifact }}
         path: assets/*
         retention-days: 7
         if-no-files-found: error
