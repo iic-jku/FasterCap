@@ -250,24 +250,30 @@ jobs:
         cp deps/wxWidgets/lib/vc14x_x64_dll/wxbase32u_vc14x_x64.dll build/Release/
         cp deps/blas/bin/libopenblas.dll build/Release/openblas.dll       
 
-    - name: "[C++] Store build artifacts (UNIX)"
+    - name: "[C++] Archive artifacts (UNIX)"
       if: contains(matrix.arch, 'linux') || contains(matrix.arch, 'darwin')
+      run: |
+        mkdir assets
+        pushd build
+        tar cvfz ../assets/${{ matrix.artifact }} FasterCap
+        popd
+
+    - name: "[C++] Archive artifacts (Windows)"
+      if: startswith(matrix.os, 'windows')
+      run: |
+        mkdir assets
+        pushd build/Release
+        tar cvfz ../../assets/${{ matrix.artifact }} *.*
+        popd
+
+    - name: "[C++] Upload build artifacts"
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact }}
-        path: build/FasterCap
+        path: assets/*
         retention-days: 7
         if-no-files-found: error
         
-    - name: "[C++] Store build artifacts (Windows)"
-      if: startswith(matrix.os, 'windows')
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ matrix.artifact }}
-        path: build/Release
-        retention-days: 7
-        if-no-files-found: error
-
   update_assets:
     name: "Update Assets"
     needs: build_and_test
@@ -277,6 +283,13 @@ jobs:
         with:
            submodules: 'true'
            fetch-depth: 0
+
+      - name: "Delete previous dev-latest release"
+        continue-on-error: true
+        if: github.ref == 'refs/heads/master'
+        run: gh release delete "dev-latest" -y
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: "Download and merge dist artifacts"
         uses: actions/download-artifact@v4
