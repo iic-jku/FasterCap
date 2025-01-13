@@ -9,7 +9,7 @@ on:
 
 jobs:
   build_and_test:
-    name: Build ${{ matrix.arch }}
+    name: Build ${{matrix.os}}/${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -30,14 +30,29 @@ jobs:
             c_compiler: clang
             cpp_compiler: clang
           - arch: x86_64-unknown-linux-gnu
-            os: ubuntu-22.04  # ubuntu-latest
             cpu: x86_64
-            artifact: FasterCap-nightly.linux-amd64.tar.gz
+            os: ubuntu-22.04  # ubuntu-latest
+            apt_build_deps: libomp-dev wx3.0-headers libwxbase3.0-dev
+            apt_install_deps: 'libc6 (>= 2.35), libwxbase3.0'
+            apt_arch: amd64
+            artifact: FasterCap-nightly.linux-ubuntu22-amd64.tar.gz
+            c_compiler: gcc
+            cpp_compiler: g++
+          - arch: x86_64-unknown-linux-gnu
+            cpu: x86_64
+            os: ubuntu-24.04
+            apt_build_deps: libomp-dev libopenblas-dev wx3.2-headers libwxgtk3.2-dev
+            apt_install_deps: 'libc6 (>= 2.38), libwxbase3.2-1t64'
+            apt_arch: amd64
+            artifact: FasterCap-nightly.linux-ubuntu24-amd64.tar.gz
             c_compiler: gcc
             cpp_compiler: g++
 #          - arch: aarch64-unknown-linux-gnu
-#            os: ubuntu-latest
 #            cpu: aarch64
+#            os: ubuntu-latest
+#            apt_build_deps: libomp-dev wx3.2-headers libwxgtk3.2-dev
+#            apt_install_deps: 'TODO'
+#            apt_arch: aarch64
 #            artifact: FasterCap-nightly.linux-arm64.tar.gz
 #            c_compiler: aarch64-linux-gnu-gcc
 #            cpp_compiler: aarch64-linux-gnu-g++
@@ -82,6 +97,22 @@ jobs:
         repository: 'ediloren/Geometry'
         path: 'FastFieldSolvers/Geometry'
 
+    - name: 'Extract FasterCap Version (UNIX)'
+      if: contains(matrix.arch, 'linux') || contains(matrix.arch, 'darwin')
+      id: versioning
+      shell: bash
+      # Example, for a line:
+      # #define FCG_HEADER_VERSION      "FasterCap version 6.0.8"
+      # ... this would give us: 6.0.8
+      run: |
+         FC_VERSION_LINE=$(grep FCG_HEADER_VERSION FastFieldSolvers/FasterCap/FasterCapGlobal.h)
+         if [ "${{ matrix.os }}" == "macos-latest" ]; then
+            FC_VERSION=$(echo $FC_VERSION_LINE |grep -Eo '\d+.\d+.\d+')
+         else
+            FC_VERSION=$(echo $FC_VERSION_LINE |grep -Po '\d+.\d+.\d+')
+         fi
+         echo "release_version=$FC_VERSION" >> "$GITHUB_OUTPUT"
+    
     - name: "Prepare environment"
       if: contains(matrix.arch, 'windows') && endsWith(matrix.arch, '-gnu')
       run: echo "C:\msys64\usr\bin;$Env:Path" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
@@ -103,8 +134,7 @@ jobs:
       if: contains(matrix.arch, 'linux')
       run: | 
         sudo apt-get -y update
-        sudo apt-get install -y libomp-dev
-        sudo apt-get install -y wx3.0-headers libwxbase3.0-dev
+        sudo apt-get install -y ${{ matrix.apt_build_deps }}
 
     - name: "Install deps on linux (ARM64 Cross Compile)"
       if: contains(matrix.arch, 'linux') && contains(matrix.arch, 'aarch64') && endsWith(matrix.arch, '-gnu')
@@ -266,6 +296,31 @@ jobs:
         tar cvfz ../../assets/${{ matrix.artifact }} *.*
         popd
 
+    - name: "Prepare Debian Packages Contents (Linux)"
+      if: contains(matrix.arch, 'linux')
+      run: |
+        mkdir -p .debpkg/usr/bin .debpkg/DEBIAN
+        cp build/FasterCap .debpkg/usr/bin/
+
+    - name: "Build Debian Packages (Linux)"
+      if: contains(matrix.arch, 'linux')
+      uses: jiro4989/build-deb-action@v3
+      id: debian_package
+      with:
+        package: FasterCap
+        package_root: .debpkg
+        maintainer: 'Martin Jan Köhler'
+        version: ${{ steps.versioning.outputs.release_version }}
+        arch: ${{ matrix.apt_arch }}
+        depends: ${{ matrix.apt_install_deps }}
+        desc: 'FasterCap capacitance field solver.'
+        homepage: 'https://github.com/martinjankoehler/FasterCap'
+
+    - name: "Move Debian Packages into assets (Linux)"
+      if: contains(matrix.arch, 'linux')
+      run: |
+        mv "${{ steps.debian_package.outputs.file_name }}" assets/
+    
     - name: "[C++] Upload build artifacts"
       uses: actions/upload-artifact@v4
       with:
@@ -273,7 +328,7 @@ jobs:
         path: assets/*
         retention-days: 7
         if-no-files-found: error
-        
+
   update_assets:
     name: "Update Assets"
     needs: build_and_test
