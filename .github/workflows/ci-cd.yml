@@ -1,26 +1,11 @@
 name: Multi-platform C++ build
 
 on:
-  push:
-    branches: [ "master" ]
-    paths-ignore:
-       - '.gitignore'
-       - '**.md'
-       - '*.sh'
-  pull_request:
-    branches: [ "master" ]
-    paths-ignore:
-       - '.gitignore'
-       - '**.md'
-       - '*.sh'
   workflow_call:
-  workflow_dispatch:
-  release:
-    types: [published]
 
-concurrency:
-  group: ${{ github.repository }}-${{ github.event.number || github.head_ref || github.sha }}-${{ github.workflow }}
-  cancel-in-progress: true
+# NOTE: concurrency settings must be defined in calling workflow!
+#       otherwise unexpected cancellations will happen
+#   example error: "Canceling since a higher priority waiting request for 'martinjankoehler/klayout-pex-release-v0.1.4-Multi-platform Python/C++ build/test' exists"
 
 jobs:
   build_and_test:
