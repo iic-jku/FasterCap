@@ -1,0 +1,22 @@
+name: "Latest master run"
+
+on:
+  push:
+    branches:
+      - master
+
+concurrency:
+  group: ${{ github.repository }}-${{ github.event.number || github.head_ref || github.sha }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: "Build"
+    uses: ./.github/workflows/ci-cd.yml
+    secrets: inherit
+    permissions:
+      actions: write
+      contents: write
