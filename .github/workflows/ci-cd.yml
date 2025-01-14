@@ -8,7 +8,7 @@ on:
 #   example error: "Canceling since a higher priority waiting request for 'martinjankoehler/klayout-pex-release-v0.1.4-Multi-platform Python/C++ build/test' exists"
 
 jobs:
-  build_and_test:
+  build:
     name: Build ${{matrix.os}}/${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
 
@@ -33,7 +33,7 @@ jobs:
             cpu: x86_64
             os: ubuntu-22.04  # ubuntu-latest
             apt_build_deps: libomp-dev wx3.0-headers libwxbase3.0-dev
-            apt_install_deps: 'libc6 (>= 2.35), libwxbase3.0'
+            apt_install_deps: 'libc6 (>= 2.35), libwxbase3.0-0v5'
             apt_arch: amd64
             artifact_template: 'FasterCap-<<VERSION>>.linux-ubuntu22-amd64.tar.gz'
             c_compiler: gcc
@@ -42,7 +42,7 @@ jobs:
             cpu: x86_64
             os: ubuntu-24.04
             apt_build_deps: libomp-dev libopenblas-dev wx3.2-headers libwxgtk3.2-dev
-            apt_install_deps: 'libc6 (>= 2.38), libwxbase3.2-1t64'
+            apt_install_deps: 'libc6 (>= 2.38), libwxbase3.2-1t64, libopenblas0'
             apt_arch: amd64
             artifact_template: 'FasterCap-<<VERSION>>.linux-ubuntu24-amd64.tar.gz'
             c_compiler: gcc
@@ -335,9 +335,91 @@ jobs:
         retention-days: 7
         if-no-files-found: error
 
+  test:
+    name: Test ${{matrix.os}}/${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    needs: build
+    
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          - os: macos-latest
+            cpu: x86_64
+            artifact_glob: 'FasterCap-*.macos-amd64.tar.gz'
+          - os: macos-latest
+            cpu: arm64
+            artifact_glob: 'FasterCap-*.macos-arm64.tar.gz'
+          - os: ubuntu-22.04
+            cpu: x86_64
+            artifact_glob: 'FasterCap_*_amd64_ubuntu-22.04.deb'  # FasterCap_6.0.8_amd64_ubuntu-22.04.deb
+          - os: ubuntu-24.04
+            cpu: x86_64
+            artifact_glob: 'FasterCap_*_amd64_ubuntu-24.04.deb'
+#          - os: ubuntu-latest
+#            cpu: aarch64
+#            artifact_glob: 'FasterCap_*_arm64_ubuntu-22.04.deb'
+#            deps_cmd: ''
+          - os: windows-latest
+            cpu: x86_64
+            artifact_glob: 'FasterCap-*.windows-amd64.tar.gz'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+           submodules: 'true'
+           fetch-depth: 0
+
+      - name: "Download and merge dist artifacts"
+        uses: actions/download-artifact@v4
+        with:
+          pattern: FasterCap*
+          merge-multiple: true
+          path: .   # destination
+
+      - name: "Install deb 📦s (Linux)"
+        if: contains(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install ./${{ matrix.artifact_glob }}
+
+      - name: "Extract tar.gz (macOS, Windows)"
+        if: contains(matrix.os, 'macos') || contains(matrix.os, 'windows')
+        run: |
+          tar xvfz ${{ matrix.artifact_glob }}
+        shell: bash
+
+      - name: "List dist directory"
+        run: find .
+        shell: bash
+
+      - name: "Install deps (macOS)"
+        if: contains(matrix.os, 'macos')
+        run: |
+           brew install libomp wxwidgets        
+
+      - name: "Test FasterCap (Linux)"
+        if: contains(matrix.os, 'ubuntu')
+        run: |
+          FasterCap | grep Copyright
+
+      - name: "Test FasterCap (macOS)"
+        if: contains(matrix.os, 'macos')
+        run: |
+          ./FasterCap | grep Copyright
+
+      - name: "Test FasterCap (Windows)"
+        if: contains(matrix.os, 'windows')
+        # Windows always sets return code 64 (behaves differently than UNIX)
+        run: |
+          ./FasterCap.exe > output.txt || echo "ignore errorlevel 64, we will look at the output.txt file"
+          grep Copyright output.txt
+        shell: bash
+
   update_assets:
     name: "Update Assets"
-    needs: build_and_test
+    needs: [build, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
