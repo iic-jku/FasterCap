@@ -146,7 +146,7 @@ endif()
 
 add_executable (FasterCap ${FastFieldSolvers_Sources} ${FasterCap_Sources})
 
-set (EXTRA_LIBS ${EXTRA_LIBS}  -lm -lstdc++)
+set (EXTRA_LIBS ${EXTRA_LIBS}  -lm -lstdc++ -lblas)
 
 # Specify compile options to use when compiling a given target.
 target_compile_options(FasterCap PUBLIC ${FASTFIELDSOLVERS_COMPILE_OPTIONS})
