@@ -42,7 +42,7 @@ jobs:
             cpu: x86_64
             os: ubuntu-24.04
             apt_build_deps: libomp-dev libopenblas-dev wx3.2-headers libwxgtk3.2-dev
-            apt_install_deps: 'libc6 (>= 2.38), libwxbase3.2-1t64, libopenblas0'
+            apt_install_deps: 'libc6, libwxbase3.2-1, libopenblas0-pthread'
             apt_arch: amd64
             artifact_template: 'FasterCap-<<VERSION>>.linux-ubuntu24-amd64.tar.gz'
             c_compiler: gcc
