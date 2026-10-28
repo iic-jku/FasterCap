@@ -120,8 +120,9 @@ unsigned long CAutoRefine::m_ulTempFileID = 1;
 
 // wxGetFreeMemory() replacement,
 // as it does not work on UNIX platforms (Linux, macOS, ...)
+// Returns -1 if the free memory is unknown, as wxGetFreeMemory() does
 wxMemorySize portableGetFreeMemory() {
-    wxMemorySize freeMemory;
+    wxMemorySize freeMemory = -1;
     
 #ifdef __LINUX__
     // NOTE: unfortunatly, <sys/sysinfo.h> does not include the MemAvailable (only MemFree),
@@ -137,10 +138,13 @@ wxMemorySize portableGetFreeMemory() {
                               << "', but obtained line: " << line << std::endl;
                     break;
             }
-            size_t idx = line.find_first_not_of(" ", keyword.size());
-            const std::string memAvail = line.substr(idx, line.size() - idx - suffix.size());
-            freeMemory = strtoul(memAvail.c_str(), NULL, 10);
-	    freeMemory *= 1024;
+            const std::string memAvail = line.substr(keyword.size());
+            char *end = NULL;
+            unsigned long kiloBytes = strtoul(memAvail.c_str(), &end, 10);
+            if (end != memAvail.c_str()) {
+                freeMemory = kiloBytes;
+                freeMemory *= 1024;
+            }
             break;
         }
     }
