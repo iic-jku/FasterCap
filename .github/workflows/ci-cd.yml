@@ -214,7 +214,7 @@ jobs:
         export OpenMP_ROOT=$(brew --prefix)/opt/libomp;
         cmake 
         -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
         -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
@@ -230,7 +230,7 @@ jobs:
         export OpenBLAS_HOME=$PWD/openblas-build; 
         cmake 
         -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
         -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
@@ -246,7 +246,7 @@ jobs:
       run: >
         cmake 
         -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
         -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
@@ -261,7 +261,7 @@ jobs:
       run: >
         cmake 
         -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
         -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
