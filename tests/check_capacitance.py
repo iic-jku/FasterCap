@@ -8,6 +8,9 @@ Checks, for the last matrix printed:
 - finite entries, positive diagonal, negative off-diagonal terms
 - symmetry, and row sums not below zero (capacitance to infinity), within the tolerance
 - the analytic values and the entries that are equal by symmetry of the geometry
+
+With --out-of-core, FasterCap runs again out-of-core with blocks of one link chunk, and the
+two matrices must agree.
 """
 
 import argparse
@@ -23,6 +26,13 @@ sys.dont_write_bytecode = True
 import geometries  # noqa: E402
 
 OUTPUT_TAIL_LINES = 60
+
+# a link chunk holds 2^20 links (AUTOREFINE_LINK_CHUNK_SIZE) of 16 bytes; blocks of 24 Mbytes
+# hold one chunk each, also if the free memory changes by a third between the runs
+CHUNK_MBYTES = 16
+BLOCK_MBYTES = 24
+# in-core and out-of-core runs add the same terms in the same order: the printed digits agree
+OUT_OF_CORE_TOLERANCE = 1e-5
 
 
 def parse_last_matrix(output):
@@ -83,12 +93,48 @@ def check_matrix(rows, geometry, tolerance):
     return errors
 
 
+def run(fastercap, list_file, options):
+    command = [os.path.abspath(fastercap), os.path.basename(list_file), "-b"] + options
+    result = subprocess.run(command, cwd=os.path.dirname(list_file), stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, universal_newlines=True)
+    return command, result.returncode, result.stdout
+
+
+def check_run(command, returncode, output, geometry, tolerance):
+    errors = []
+    if returncode != 0:
+        errors.append("exit code %d" % returncode)
+    names, rows = parse_last_matrix(output)
+    if names is None:
+        errors.append("no capacitance matrix in the output")
+    else:
+        errors += check_matrix(rows, geometry, tolerance)
+    print(" ".join(command))
+    for name, row in zip(names or [], rows):
+        print("%-12s %s" % (name, " ".join("%.6g" % v for v in row)))
+    return rows, errors
+
+
+def out_of_core_ratio(fastercap, list_file, options):
+    """-f value for blocks of BLOCK_MBYTES, from the memory a probe run reports"""
+    command, _, output = run(fastercap, list_file, options + ["-f1e12"])
+    links = re.search(r"links is: (\d+) Mbytes", output)
+    free = re.search(r"Available free memory left is: (\d+) Mbytes", output)
+    if not links or not free:
+        return None, "%s reported no link or free memory" % " ".join(command)
+    if int(links.group(1)) <= CHUNK_MBYTES:
+        return None, "the links need %s Mbytes, not more than one chunk" % links.group(1)
+    return int(free.group(1)) / float(BLOCK_MBYTES), None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--fastercap", required=True, help="FasterCap executable")
     parser.add_argument("--geometry", required=True, choices=sorted(geometries.GEOMETRIES))
     parser.add_argument("--tolerance", required=True, type=float, help="relative tolerance")
     parser.add_argument("--workdir", required=True, help="directory for the input files")
+    parser.add_argument("--out-of-core", action="store_true",
+                        help="run again out-of-core and compare the matrices")
     parser.add_argument("fastercap_args", nargs=argparse.REMAINDER,
                         help="FasterCap options after --, e.g. -- -a0.01")
     args = parser.parse_args()
@@ -96,25 +142,27 @@ def main():
 
     geometry = geometries.GEOMETRIES[args.geometry]
     os.makedirs(args.workdir, exist_ok=True)
-    list_file = geometry.write(args.workdir)
+    list_file = os.path.abspath(geometry.write(args.workdir))
 
-    command = [os.path.abspath(args.fastercap), os.path.basename(list_file), "-b"] + fastercap_args
-    result = subprocess.run(command, cwd=args.workdir, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, universal_newlines=True)
-    output = result.stdout
+    command, returncode, output = run(args.fastercap, list_file, fastercap_args)
+    rows, errors = check_run(command, returncode, output, geometry, args.tolerance)
 
-    errors = []
-    if result.returncode != 0:
-        errors.append("exit code %d" % result.returncode)
-    names, rows = parse_last_matrix(output)
-    if names is None:
-        errors.append("no capacitance matrix in the output")
-    else:
-        errors += check_matrix(rows, geometry, args.tolerance)
+    if args.out_of_core and not errors:
+        ratio, error = out_of_core_ratio(args.fastercap, list_file, fastercap_args)
+        if error:
+            errors.append(error)
+        else:
+            command, returncode, output = run(args.fastercap, list_file, fastercap_args + ["-f%g" % ratio])
+            ooc_rows, ooc_errors = check_run(command, returncode, output, geometry, args.tolerance)
+            errors += ["out-of-core: " + e for e in ooc_errors]
+            if "Going out-of-core" not in output:
+                errors.append("out-of-core: FasterCap stayed in-core")
+            elif not ooc_errors:
+                for i, (row, ooc_row) in enumerate(zip(rows, ooc_rows)):
+                    for j, (value, ooc_value) in enumerate(zip(row, ooc_row)):
+                        if relative_difference(value, ooc_value) > OUT_OF_CORE_TOLERANCE:
+                            errors.append("out-of-core C%d%d = %g, in-core %g" % (i + 1, j + 1, ooc_value, value))
 
-    print(" ".join(command))
-    for name, row in zip(names or [], rows):
-        print("%-12s %s" % (name, " ".join("%.6g" % v for v in row)))
     if errors:
         tail = output.splitlines()[-OUTPUT_TAIL_LINES:]
         print("FAILED:\n  " + "\n  ".join(errors))

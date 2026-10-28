@@ -8,14 +8,21 @@ if(NOT Python3_Interpreter_FOUND)
     return()
 endif()
 
+# fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] <FasterCap options>...)
 function(fastercap_test name geometry tolerance)
+    cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE" "" "")
+    set(out_of_core)
+    if(arg_OUT_OF_CORE)
+        set(out_of_core --out-of-core)
+    endif()
     add_test(NAME ${name}
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_capacitance.py
             --fastercap $<TARGET_FILE:FasterCap>
             --geometry ${geometry}
             --tolerance ${tolerance}
             --workdir ${CMAKE_CURRENT_BINARY_DIR}/${name}
-            -- ${ARGN})
+            ${out_of_core}
+            -- ${arg_UNPARSED_ARGUMENTS})
 endfunction()
 
 # 0.2 % below the analytic value at -a0.001
@@ -26,3 +33,6 @@ fastercap_test(sphere sphere 0.01 -a0.01)
 fastercap_test(three_cubes three_cubes 0.01 -a0.01)
 # Galerkin: C12 and C13 differ by 0.8 %, also at -t1e-4
 fastercap_test(three_cubes_galerkin three_cubes 0.02 -a0.01 -g)
+# 2.4M links (over two link chunks) at -m0.005 -d0.5; C12 = C13 within 0.02 %, symmetric
+# within 0.01 %; the out-of-core matrix must equal the in-core one
+fastercap_test(three_cubes_out_of_core three_cubes 0.01 OUT_OF_CORE -m0.005 -d0.5)
