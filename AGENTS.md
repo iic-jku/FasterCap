@@ -2,10 +2,13 @@
 
 ## Repositories
 
-- This is Martin's fork of `ediloren/FasterCap` (upstream 6.0.7, `b42179a`); `origin` is
-  `martinjankoehler/FasterCap`, `upstream` is `ediloren/FasterCap`.
+- This is `iic-jku/FasterCap` (remote `jku`, formerly `martinjankoehler/FasterCap`), a fork
+  of `ediloren/FasterCap` (remote `upstream`, 6.0.7, `b42179a`). Its issues are written
+  `iic-jku/FasterCap#N` outside this repository.
 - CMake builds the sibling checkouts `../LinAlgebra` and `../Geometry` (`add_subdirectory`).
-  CI checks out `martinjankoehler/LinAlgebra` (`master`) and `ediloren/Geometry` (not forked).
+  CI checks out the `master` of `iic-jku/LinAlgebra` and `iic-jku/Geometry`, forks of the
+  ediloren repositories with their own AGENTS.md.
+- Remotes use SSH URLs (`git@github.com:…`).
 - Fixes meant for upstream go on branches based on `upstream/master`, one concern each, as
   for the open PRs `ediloren/FasterCap#4`–`#7`. Fork-only work (CI, packaging, docs) stays
   separate from them.

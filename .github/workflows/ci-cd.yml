@@ -88,13 +88,13 @@ jobs:
     - name: "Checkout LinAlgebra"
       uses: actions/checkout@v4
       with:
-        repository: 'martinjankoehler/LinAlgebra'
+        repository: 'iic-jku/LinAlgebra'
         path: 'FastFieldSolvers/LinAlgebra'
 
     - name: "Checkout Geometry"
       uses: actions/checkout@v4
       with:
-        repository: 'ediloren/Geometry'
+        repository: 'iic-jku/Geometry'
         path: 'FastFieldSolvers/Geometry'
 
     - name: 'Extract FasterCap Version'
@@ -319,7 +319,7 @@ jobs:
         arch: ${{ matrix.apt_arch }}
         depends: ${{ matrix.apt_install_deps }}
         desc: 'FasterCap capacitance field solver.'
-        homepage: 'https://github.com/martinjankoehler/FasterCap'
+        homepage: 'https://github.com/iic-jku/FasterCap'
 
     - name: "Move Debian Packages into assets (Linux)"
       if: contains(matrix.arch, 'linux')
