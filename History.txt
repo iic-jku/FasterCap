@@ -11,6 +11,7 @@ Version 6.1.0, 2026/10/28
 - Fixed '-pb' block preconditioner overflowing and hanging for blocks rooted at a leaf (0hmX)
 - '-a' that does not converge returns its last iteration and exit code 75 (dgaddy)
 - Linux and macOS binaries are optimized again (built without optimization since 6.0.8)
+- macOS binary for arm64 only: the macos-amd64 asset of 6.0.8 and 6.0.9 was built on an arm64 runner without cross-compiling
 - Debian packages depend on libgomp1 and OpenBLAS
 - Regression tests, run with ctest
 - Usage text names the IIC-JKU fork
