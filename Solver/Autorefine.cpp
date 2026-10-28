@@ -527,7 +527,9 @@ int CAutoRefine::AutoRefineLinks(CAutoRefGlobalVars globalVars)
 //mem_AvailVirtual = 50000000;
 
 	goOutOfCore = false;
-	if(mem_AvailVirtual.ToLong() == -1L) {
+	// unknown (-1, or a bogus negative value); compared as wxLongLong, as ToLong() fails its
+	// assert on Windows (32 bit long) with more than 2 GB free
+	if(mem_AvailVirtual < 0) {
 		ErrMsg("Error: cannot retrieve the information about the free memory quantity\n");
 		ErrMsg("       Cannot go out-of-core, continuing in-core\n");
 	}
