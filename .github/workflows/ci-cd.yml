@@ -22,13 +22,13 @@ jobs:
             cpu: x86_64
             artifact_template: 'FasterCap-<<VERSION>>.macos-amd64.tar.gz'
             c_compiler: clang
-            cpp_compiler: clang
+            cpp_compiler: clang++
           - arch: aarch64-apple-darwin          
             os: macos-latest
             cpu: arm64
             artifact_template: 'FasterCap-<<VERSION>>.macos-arm64.tar.gz'
             c_compiler: clang
-            cpp_compiler: clang
+            cpp_compiler: clang++
           - arch: x86_64-unknown-linux-gnu
             cpu: x86_64
             os: ubuntu-22.04  # ubuntu-latest
