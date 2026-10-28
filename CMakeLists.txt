@@ -97,7 +97,10 @@ set(WXWIDGETS_LIBS ${WXWIDGETS_LIBS} ${wxWidgets_LIBRARIES})
 # general include_directories, as LinAlgebra and Geometry
 # are one level under the base path, and they are included
 # in the sources as "#include "LinAlgebra/Mtx.h" etc.
-include_directories("..")
+# '..' resolved by CMake, not by the file system: with a symlinked FasterCap directory
+# (e.g. a workspace of symlinks), the file system would resolve it to the symlink target's parent
+get_filename_component(FASTFIELDSOLVERS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+include_directories("${FASTFIELDSOLVERS_DIR}")
 # same as above for the main includes in the base path; could use ${CMAKE_SOURCE_DIR}
 include_directories(".")
 
@@ -105,10 +108,10 @@ include_directories(".")
 # enabled before adding LinAlgebra and Geometry, so that their tests are run too
 enable_testing()
 
-include_directories ("../LinAlgebra")
-add_subdirectory("../LinAlgebra" LinAlgebra)
-include_directories ("../Geometry")
-add_subdirectory("../Geometry" Geometry)
+include_directories ("${FASTFIELDSOLVERS_DIR}/LinAlgebra")
+add_subdirectory("${FASTFIELDSOLVERS_DIR}/LinAlgebra" LinAlgebra)
+include_directories ("${FASTFIELDSOLVERS_DIR}/Geometry")
+add_subdirectory("${FASTFIELDSOLVERS_DIR}/Geometry" Geometry)
 set (EXTRA_LIBS ${EXTRA_LIBS} LinAlgebra Geometry)
 
 include_directories ("${PROJECT_SOURCE_DIR}/Solver")
