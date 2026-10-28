@@ -69,6 +69,10 @@ fastercap_test(three_cubes_out_of_core three_cubes 0.01 OUT_OF_CORE -m0.005 -d0.
 # run hung after writing past the block element array; C12 = C13 within 0.07 %, symmetric
 # within 0.3 %
 fastercap_test(three_cubes_block_precond three_cubes 0.01 -pb2)
+# dielectric shell: links between dielectric panels and super panels next to them made it 16 %
+# high. The collocation on the dielectric interface converges slowly: with every link direct (and
+# in FastCap2) the input panels give 3.3 % above the analytic value, -a0.01 gives 2.5 %
+fastercap_test(coated_sphere coated_sphere 0.05 -a0.01)
 # -t1e-30 is out of reach of GMRES: exit code 75 (FC_CONVERGENCE_FAILED) with the matrix of the
 # last iteration, as accurate as three_cubes_default
 fastercap_test(three_cubes_not_converged three_cubes 0.01 EXIT_CODE 75 -t1e-30)
