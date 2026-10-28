@@ -32,8 +32,8 @@ jobs:
           - arch: x86_64-unknown-linux-gnu
             cpu: x86_64
             os: ubuntu-22.04  # ubuntu-latest
-            apt_build_deps: libomp-dev wx3.0-headers libwxbase3.0-dev
-            apt_install_deps: 'libc6 (>= 2.35), libwxbase3.0-0v5'
+            apt_build_deps: libomp-dev libopenblas-dev wx3.0-headers libwxbase3.0-dev
+            apt_install_deps: 'libc6 (>= 2.35), libwxbase3.0-0v5, libgomp1, libopenblas0-pthread'
             apt_arch: amd64
             artifact_template: 'FasterCap-<<VERSION>>.linux-ubuntu22-amd64.tar.gz'
             c_compiler: gcc
@@ -42,7 +42,7 @@ jobs:
             cpu: x86_64
             os: ubuntu-24.04
             apt_build_deps: libomp-dev libopenblas-dev wx3.2-headers libwxgtk3.2-dev
-            apt_install_deps: 'libc6, libwxbase3.2-1, libopenblas0-pthread'
+            apt_install_deps: 'libc6, libwxbase3.2-1, libgomp1, libopenblas0-pthread'
             apt_arch: amd64
             artifact_template: 'FasterCap-<<VERSION>>.linux-ubuntu24-amd64.tar.gz'
             c_compiler: gcc
