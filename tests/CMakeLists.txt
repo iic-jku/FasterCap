@@ -72,3 +72,6 @@ fastercap_test(three_cubes_not_converged three_cubes 0.01 EXIT_CODE 75 -t1e-30)
 # a triangle with its vertices on a line has no self-potential, the matrix would be NaN: exit
 # code 65 (FC_INVALID_RESULT)
 fastercap_test(degenerate_triangle degenerate_triangle 0 NO_MATRIX EXIT_CODE 65)
+# FasterCap can't read PATRAN neutral files: exit code 74 (FC_FILE_ERROR), not the matrix
+# without the dielectric
+fastercap_test(patran_dielectric patran_dielectric 0 NO_MATRIX EXIT_CODE 74)

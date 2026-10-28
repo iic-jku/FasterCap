@@ -119,9 +119,24 @@ def write_degenerate_triangle(directory):
     return path
 
 
+def write_patran_dielectric(directory):
+    """The cube in a dielectric given as a PATRAN neutral file, which FasterCap can't read."""
+    _write_panels(os.path.join(directory, "cube.txt"), "cube", cube_panels("c", SIDE))
+    # title and end packets, as in FastCap2's examples/*.neu
+    with open(os.path.join(directory, "coat.neu"), "w") as f:
+        f.write("25       0       0       1       0       0       0       0       0\n"
+                "PATRAN DIELECTRIC\n"
+                "99       0       0       1       0       0       0       0       0\n")
+    path = os.path.join(directory, "patran_dielectric.lst")
+    _write_list(path, ["C cube.txt 1.0 0 0 0",
+                       "D coat.neu 1.0 2.0 0 0 0 0.5 0.5 0.5"])
+    return path
+
+
 GEOMETRIES = {
     "cube": Geometry(write_cube, 1, {(1, 1): CUBE_FACTOR * FOUR_PI_EPS0 * SIDE}, []),
     "three_cubes": Geometry(write_three_cubes, 3, {}, [((1, 2), (1, 3)), ((2, 2), (3, 3))]),
     "sphere": Geometry(write_sphere, 1, {(1, 1): FOUR_PI_EPS0 * RADIUS}, []),
     "degenerate_triangle": Geometry(write_degenerate_triangle, 1, {}, []),
+    "patran_dielectric": Geometry(write_patran_dielectric, 1, {}, []),
 }
