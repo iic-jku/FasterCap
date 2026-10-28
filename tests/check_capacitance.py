@@ -33,6 +33,8 @@ CHUNK_MBYTES = 16
 BLOCK_MBYTES = 24
 # in-core and out-of-core runs add the same terms in the same order: the printed digits agree
 OUT_OF_CORE_TOLERANCE = 1e-5
+# below the CTest timeout, so that a hanging run still reports its output
+RUN_TIMEOUT = 240
 
 
 def parse_last_matrix(output):
@@ -95,14 +97,23 @@ def check_matrix(rows, geometry, tolerance):
 
 def run(fastercap, list_file, options):
     command = [os.path.abspath(fastercap), os.path.basename(list_file), "-b"] + options
-    result = subprocess.run(command, cwd=os.path.dirname(list_file), stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, universal_newlines=True)
+    try:
+        result = subprocess.run(command, cwd=os.path.dirname(list_file), stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, universal_newlines=True,
+                                timeout=RUN_TIMEOUT)
+    except subprocess.TimeoutExpired as exc:
+        output = exc.output or ""
+        if isinstance(output, bytes):
+            output = output.decode(errors="replace")
+        return command, "timeout after %d s" % RUN_TIMEOUT, output
     return command, result.returncode, result.stdout
 
 
 def check_run(command, returncode, output, geometry, tolerance):
     errors = []
-    if returncode != 0:
+    if isinstance(returncode, str):
+        errors.append(returncode)
+    elif returncode != 0:
         errors.append("exit code %d" % returncode)
     names, rows = parse_last_matrix(output)
     if names is None:
