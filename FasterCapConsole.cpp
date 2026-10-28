@@ -30,9 +30,23 @@
 
 #ifdef FCG_HEADLESS
 
+#include <iostream>
+#include <wx/debug.h>
+
+// failed asserts are printed, not shown in a dialog: wxWidgets opens one on Windows,
+// also in console programs, and nobody closes it in a batch run
+static void ConsoleAssertHandler(const wxString& file, int line, const wxString& func,
+                                 const wxString& cond, const wxString& msg)
+{
+    std::cerr << file << "(" << line << "): assert \"" << cond << "\" failed in "
+              << func << "(): " << msg << std::endl;
+}
+
 int main(int argc, char **argv)
 {
     int ret;
+
+    wxSetAssertHandler(ConsoleAssertHandler);
 
     FasterCapConsole console;
 
