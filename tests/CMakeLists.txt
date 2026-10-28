@@ -10,6 +10,12 @@ if(APPLE)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_blas_linkage.cmake)
 endif()
 
+# -bv prints only the version; headless builds started a run without input file instead
+add_test(NAME version COMMAND FasterCap -bv)
+set_tests_properties(version PROPERTIES
+    PASS_REGULAR_EXPRESSION "^FasterCap version [0-9]+\\.[0-9]+\\.[0-9]+"
+    FAIL_REGULAR_EXPRESSION "Running|Error")
+
 find_package(Python3 COMPONENTS Interpreter)
 if(NOT Python3_Interpreter_FOUND)
     message(STATUS "Python 3 not found: no regression tests")
