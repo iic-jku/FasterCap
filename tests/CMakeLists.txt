@@ -35,6 +35,9 @@ function(fastercap_test name geometry tolerance)
     set_tests_properties(${name} PROPERTIES TIMEOUT 300)
 endfunction()
 
+# default settings, no -a: 18 panels, a few milliseconds; C12 = C13 within 0.1 %, symmetric
+# within 0.6 %
+fastercap_test(three_cubes_default three_cubes 0.01)
 # 0.2 % below the analytic value at -a0.001
 fastercap_test(cube cube 0.01 -a0.001)
 # the inscribed polyhedron of 1280 triangles is 0.3 % below the sphere
