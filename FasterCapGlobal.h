@@ -52,6 +52,7 @@
 #define FCG_HEADER_VERSION      "FasterCap version 6.0.9"
 #define FCG_HEADER_COPYRIGHT    "Copyright 2019 FastFieldSolvers S.R.L."
 #define FCG_HEADER_WEBSITE      "http://www.fastfieldsolvers.com, All Rights reserved"
+#define FCG_HEADER_FORK         "This is the fork maintained by IIC-JKU, not a FastFieldSolvers release:\nhttps://github.com/iic-jku/FasterCap (report problems there)"
 // license text file name
 #define FCG_LICENSE_TEXT_FILE_NAME      "LICENCE.txt"
 
