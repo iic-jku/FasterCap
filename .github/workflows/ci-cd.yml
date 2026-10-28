@@ -17,12 +17,6 @@ jobs:
 
       matrix:
         include:
-          - arch: x86_64-apple-darwin
-            os: macos-latest
-            cpu: x86_64
-            artifact_template: 'FasterCap-<<VERSION>>.macos-amd64.tar.gz'
-            c_compiler: clang
-            cpp_compiler: clang++
           - arch: aarch64-apple-darwin          
             os: macos-latest
             cpu: arm64
@@ -353,9 +347,6 @@ jobs:
 
       matrix:
         include:
-          - os: macos-latest
-            cpu: x86_64
-            artifact_glob: 'FasterCap-*.macos-amd64.tar.gz'
           - os: macos-latest
             cpu: arm64
             artifact_glob: 'FasterCap-*.macos-arm64.tar.gz'
