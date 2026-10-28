@@ -153,6 +153,29 @@ def write_patran_dielectric(directory):
     return path
 
 
+
+# a quadrilateral whose corner (1, 1, 1) is off the plane of the other three
+SKEWED_QUAD = [(0, 0, 0), (1, 0, 0), (1, 1, 1), (0, 1, 0)]
+
+
+def write_skewed_quad(directory):
+    """A non-planar Q panel, split by FasterCap along its smaller diagonal."""
+    _write_panels(os.path.join(directory, "skewed.txt"), "skewed quad", [("Q", "c", SKEWED_QUAD)])
+    path = os.path.join(directory, "skewed_quad.lst")
+    _write_list(path, ["C skewed.txt 1.0 0 0 0"])
+    return path
+
+
+def write_skewed_quad_triangles(directory):
+    """The two triangles of the skewed quad, split along the diagonal from corner 1 to 3."""
+    a, b, c, d = SKEWED_QUAD
+    _write_panels(os.path.join(directory, "skewed_triangles.txt"), "skewed quad as triangles",
+                  [("T", "c", [a, b, d]), ("T", "c", [b, c, d])])
+    path = os.path.join(directory, "skewed_quad_triangles.lst")
+    _write_list(path, ["C skewed_triangles.txt 1.0 0 0 0"])
+    return path
+
+
 GEOMETRIES = {
     "cube": Geometry(write_cube, 1, {(1, 1): CUBE_FACTOR * FOUR_PI_EPS0 * SIDE}, []),
     "three_cubes": Geometry(write_three_cubes, 3, {}, [((1, 2), (1, 3)), ((2, 2), (3, 3))]),
@@ -160,4 +183,6 @@ GEOMETRIES = {
     "coated_sphere": Geometry(write_coated_sphere, 1, {(1, 1): COATED_SPHERE_C}, []),
     "degenerate_triangle": Geometry(write_degenerate_triangle, 1, {}, []),
     "patran_dielectric": Geometry(write_patran_dielectric, 1, {}, []),
+    "skewed_quad": Geometry(write_skewed_quad, 1, {}, []),
+    "skewed_quad_triangles": Geometry(write_skewed_quad_triangles, 1, {}, []),
 }

@@ -14,6 +14,9 @@ two matrices must agree.
 
 With --no-matrix, FasterCap must stop without printing a matrix.
 
+With --reference, FasterCap runs again on another geometry made of the same panels, and the
+two matrices must agree.
+
 With --interrupt, an out-of-core run gets SIGINT once it has written link chunks: it must stop
 with FC_USER_BREAK and delete its temporary files.
 """
@@ -40,6 +43,8 @@ CHUNK_MBYTES = 16
 BLOCK_MBYTES = 24
 # in-core and out-of-core runs add the same terms in the same order: the printed digits agree
 OUT_OF_CORE_TOLERANCE = 1e-5
+# the same panels, given differently
+REFERENCE_TOLERANCE = 1e-5
 # below the CTest timeout, so that a hanging run still reports its output
 RUN_TIMEOUT = 240
 # FC_USER_BREAK
@@ -204,6 +209,8 @@ def main():
     parser.add_argument("--exit-code", type=int, default=0, help="expected exit code")
     parser.add_argument("--no-matrix", action="store_true",
                         help="FasterCap must stop without a capacitance matrix")
+    parser.add_argument("--reference", choices=sorted(geometries.GEOMETRIES),
+                        help="geometry of the same panels, which must give the same matrix")
     parser.add_argument("fastercap_args", nargs=argparse.REMAINDER,
                         help="FasterCap options after --, e.g. -- -a0.01")
     args = parser.parse_args()
@@ -245,6 +252,20 @@ def main():
                     for j, (value, ooc_value) in enumerate(zip(row, ooc_row)):
                         if relative_difference(value, ooc_value) > OUT_OF_CORE_TOLERANCE:
                             errors.append("out-of-core C%d%d = %g, in-core %g" % (i + 1, j + 1, ooc_value, value))
+
+    if args.reference and not errors:
+        reference = geometries.GEOMETRIES[args.reference]
+        reference_file = os.path.abspath(reference.write(args.workdir))
+        command, returncode, output = run(args.fastercap, reference_file, fastercap_args)
+        reference_rows, reference_errors = check_run(command, returncode, output, reference,
+                                                     args.tolerance)
+        errors += ["reference: " + e for e in reference_errors]
+        if not reference_errors:
+            for i, (row, reference_row) in enumerate(zip(rows, reference_rows)):
+                for j, (value, reference_value) in enumerate(zip(row, reference_row)):
+                    if relative_difference(value, reference_value) > REFERENCE_TOLERANCE:
+                        errors.append("C%d%d = %g, %s gives %g"
+                                      % (i + 1, j + 1, value, args.reference, reference_value))
 
     return report(errors, output)
 

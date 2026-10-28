@@ -23,9 +23,9 @@ if(NOT Python3_Interpreter_FOUND)
 endif()
 
 # fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [INTERRUPT] [NO_MATRIX]
-#                [EXIT_CODE <code>] <FasterCap options>...)
+#                [EXIT_CODE <code>] [REFERENCE <geometry>] <FasterCap options>...)
 function(fastercap_test name geometry tolerance)
-    cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE;INTERRUPT;NO_MATRIX" "EXIT_CODE" "")
+    cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE;INTERRUPT;NO_MATRIX" "EXIT_CODE;REFERENCE" "")
     set(flags)
     if(arg_OUT_OF_CORE)
         list(APPEND flags --out-of-core)
@@ -38,6 +38,9 @@ function(fastercap_test name geometry tolerance)
     endif()
     if(DEFINED arg_EXIT_CODE)
         list(APPEND flags --exit-code ${arg_EXIT_CODE})
+    endif()
+    if(DEFINED arg_REFERENCE)
+        list(APPEND flags --reference ${arg_REFERENCE})
     endif()
     add_test(NAME ${name}
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_capacitance.py
@@ -87,3 +90,6 @@ fastercap_test(patran_dielectric patran_dielectric 0 NO_MATRIX EXIT_CODE 74)
 if(NOT WIN32)
     fastercap_test(three_cubes_interrupted three_cubes 0 INTERRUPT -m0.005 -d0.5)
 endif()
+# a non-planar Q panel is split into the two triangles along its smaller diagonal; without -v,
+# it went to the planar triangulator, 6 % lower
+fastercap_test(skewed_quad skewed_quad 0.01 REFERENCE skewed_quad_triangles)
