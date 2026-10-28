@@ -17,12 +17,6 @@ jobs:
 
       matrix:
         include:
-          - arch: aarch64-apple-darwin          
-            os: macos-latest
-            cpu: arm64
-            artifact_template: 'FasterCap-<<VERSION>>.macos-arm64.tar.gz'
-            c_compiler: clang
-            cpp_compiler: clang++
           - arch: x86_64-unknown-linux-gnu
             cpu: x86_64
             os: ubuntu-22.04  # ubuntu-latest
@@ -57,7 +51,7 @@ jobs:
             c_compiler: clang
             cpp_compiler: clang
 
-    steps:
+    steps: &build_steps
 
     - name: "Install deps on windows"
       if: contains(matrix.arch, 'windows')
@@ -337,6 +331,24 @@ jobs:
         retention-days: 7
         if-no-files-found: error
 
+  # macOS arm64 runners are often unavailable for hours: a job of its own, so that 'test' and
+  # 'update_assets' don't wait for it
+  build_macos:
+    name: Build ${{matrix.os}}/${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        include:
+          - arch: aarch64-apple-darwin
+            os: macos-latest
+            cpu: arm64
+            artifact_template: 'FasterCap-<<VERSION>>.macos-arm64.tar.gz'
+            c_compiler: clang
+            cpp_compiler: clang++
+
+    steps: *build_steps
+
   test:
     name: Test ${{matrix.os}}/${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
@@ -403,12 +415,10 @@ jobs:
           grep Copyright output.txt
         shell: bash
 
-  # separate from 'test', so that update_assets doesn't wait for a macOS runner,
-  # which can take hours
   test_macos:
     name: Test macos-latest/arm64
     runs-on: macos-latest
-    needs: build
+    needs: build_macos
 
     steps:
       - name: "Download and merge dist artifacts"
@@ -492,6 +502,10 @@ jobs:
           merge-multiple: true
           path: dist   # destination
 
+      # uploaded by 'update_assets_macos' once tested
+      - name: "Leave out macOS assets"
+        run: rm -f dist/*macos*
+
       - name: "List dist directory"
         run: find dist
 
@@ -514,5 +528,30 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         if: startsWith(github.ref, 'refs/tags/')
         with:
+          files: |
+            dist/*
+
+  update_assets_macos:
+    name: "Update Assets macOS"
+    needs: [update_assets, test_macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Download macOS artifacts"
+        uses: actions/download-artifact@v4
+        with:
+          pattern: FasterCap-*.macos-*
+          merge-multiple: true
+          path: dist
+
+      - name: "List dist directory"
+        run: find dist
+
+      - name: "Add them to the release of 'update_assets'"
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
+        with:
+          tag_name: ${{ github.ref == 'refs/heads/master' && 'dev-latest' || github.ref_name }}
           files: |
             dist/*
