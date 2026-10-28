@@ -223,7 +223,7 @@ int CMultHier::ComputePanelPotentials_2fast()
                         node->m_dPotential += (localPanelPtrLinks[localChunk][localPosInChunk])->m_dCharge * localPotCoeffLinks[localChunk][localPosInChunk];
                         
                         // this is a hotspot, only check this in debug mode…
-#if _DEBUG
+#ifndef NDEBUG
                         ASSERT(fabs(node->m_dPotential) < 1E20);
 #endif
                     }
