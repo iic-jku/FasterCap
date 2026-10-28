@@ -491,7 +491,8 @@ jobs:
       - name: "Delete previous dev-latest release"
         continue-on-error: true
         if: github.ref == 'refs/heads/master'
-        run: gh release delete "dev-latest" -y
+        # with its tag, which would otherwise keep pointing to the first dev-latest commit
+        run: gh release delete "dev-latest" -y --cleanup-tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -517,6 +518,7 @@ jobs:
         with:
           name: "Continuous Build: latest development"
           tag_name: "dev-latest"
+          target_commitish: ${{ github.sha }}
           body: "Build with the latest changes in master."
           draft: false
           files: |
