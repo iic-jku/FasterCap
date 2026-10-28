@@ -26,7 +26,17 @@
 
 #include "Solver/SolveCapacitance.h"
 
+#include <csignal>
+
 #define CMDLINEPARSER_MAX_INPUT_STR_LEN     4094
+
+// Ctrl-C or kill: stop the run as the stop button of the GUI does, so that it deletes its
+// out-of-core temporary files; a second signal terminates at once
+static void StopOnSignal(int sig)
+{
+	g_bFCContinue = false;
+	signal(sig, SIG_DFL);
+}
 
 #ifdef FCG_HEADLESS
 
@@ -83,6 +93,8 @@ int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
 	// if no parser error
 	if(ret == false && bOption != '?' && bOption != 'v') {
 		// actually run FasterCap
+		signal(SIGINT, StopOnSignal);
+		signal(SIGTERM, StopOnSignal);
 		retStatus = FC_NORMAL_END;
 		retStatus = solveMain.Run(globalVars);
 	}
