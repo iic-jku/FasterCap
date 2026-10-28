@@ -101,6 +101,10 @@ include_directories("..")
 # same as above for the main includes in the base path; could use ${CMAKE_SOURCE_DIR}
 include_directories(".")
 
+# regression tests, run with: ctest --test-dir <build directory> --output-on-failure;
+# enabled before adding LinAlgebra and Geometry, so that their tests are run too
+enable_testing()
+
 include_directories ("../LinAlgebra")
 add_subdirectory("../LinAlgebra" LinAlgebra)
 include_directories ("../Geometry")
@@ -152,6 +156,4 @@ set (EXTRA_LIBS ${EXTRA_LIBS}  -lm -lstdc++ -lblas)
 target_compile_options(FasterCap PUBLIC ${FASTFIELDSOLVERS_COMPILE_OPTIONS})
 target_link_libraries(FasterCap ${EXTRA_LIBS} ${WXWIDGETS_LIBS} ${EIGEN_LIBS})
 
-# regression tests, run with: ctest --test-dir <build directory> --output-on-failure
-enable_testing()
 add_subdirectory(tests)
