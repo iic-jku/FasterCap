@@ -4,6 +4,9 @@ Copyright (c) 2019
 FastFieldSolvers S.R.L.  http://www.fastfieldsolvers.com
 ==================
 
+Version 6.1.1, 2026/10/29
+- Release assets for Linux and Windows no longer wait for a macOS runner (6.1.0 has none)
+
 Version 6.1.0, 2026/10/28
 - First release of the fork maintained by IIC-JKU, https://github.com/iic-jku/FasterCap
 - Fixed out-of-core runs, which skipped all links after the first block since 6.0.8
