@@ -76,10 +76,15 @@
   `cmake --build build -j`. Linux: the same with `/usr/bin/wx-config`.
 - Spell build types exactly (`Release`, `RelWithDebInfo`): an unknown `CMAKE_BUILD_TYPE`
   silently builds without `-O`. Benchmarks compare builds of the same type.
-- There is no test suite yet, and CI only checks the banner. Each bug fix gets a test that
-  fails without it. A test that needs a workaround means the code is wrong: fix the code.
-- The FastCap2 example `1x1bus.lst` gives `nan` even with upstream sources: don't use it as
-  a reference.
+- Run `ctest --test-dir build --output-on-failure` before calling work done; report failures
+  with their output. The tests (`tests/`, Python 3 standard library only) generate their
+  geometries in `tests/geometries.py` and check each matrix with `tests/check_capacitance.py`.
+- Each bug fix gets a test that fails without it. A test that needs a workaround means the
+  code is wrong: fix the code.
+- Prefer geometries with analytic values or symmetries to stored numbers. Each tolerance
+  comes with its reason in `tests/CMakeLists.txt`.
+- FasterCap doesn't read PATRAN `.neu` files: FastCap2 examples using them, like
+  `1x1bus.lst`, give `nan`. Don't use them as a reference.
 - No loosened tolerances or re-baselined numbers without a physical explanation.
 - Packaging changes: install the `.deb` in a clean `ubuntu:22.04` and `ubuntu:24.04`
   container and run `FasterCap -bv` there.

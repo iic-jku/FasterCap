@@ -214,7 +214,7 @@ jobs:
         export OpenMP_ROOT=$(brew --prefix)/opt/libomp;
         cmake 
         -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
         -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
@@ -230,7 +230,7 @@ jobs:
         export OpenBLAS_HOME=$PWD/openblas-build; 
         cmake 
         -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
         -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
@@ -246,7 +246,7 @@ jobs:
       run: >
         cmake 
         -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
         -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
@@ -261,7 +261,7 @@ jobs:
       run: >
         cmake 
         -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
         -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
@@ -284,6 +284,14 @@ jobs:
       run: |
         cp deps/wxWidgets/lib/vc14x_x64_dll/wxbase32u_vc14x_x64.dll build/Release/
         cp deps/blas/bin/libopenblas.dll build/Release/openblas.dll       
+        cp deps/blas/bin/libopenblas.dll build/LinAlgebra/tests/Release/openblas.dll
+
+    - name: "[C++] Test"
+      run: >
+        ctest
+        --test-dir ${{ steps.strings.outputs.build-output-dir }}
+        --build-config Release
+        --output-on-failure
 
     - name: "[C++] Archive artifacts (UNIX)"
       if: contains(matrix.arch, 'linux') || contains(matrix.arch, 'darwin')
@@ -417,9 +425,50 @@ jobs:
           grep Copyright output.txt
         shell: bash
 
+  test_deb:
+    name: Test .deb in clean ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    needs: build
+    # a container without the runner's preinstalled packages, so that missing package dependencies fail
+    container: ${{ matrix.image }}
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          - image: ubuntu:22.04
+            artifact_glob: 'FasterCap_*_amd64_ubuntu-22.04.deb'
+          - image: ubuntu:24.04
+            artifact_glob: 'FasterCap_*_amd64_ubuntu-24.04.deb'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Download and merge dist artifacts"
+        uses: actions/download-artifact@v4
+        with:
+          pattern: FasterCap*
+          merge-multiple: true
+          path: dist
+
+      - name: "Install deb 📦 and Python"
+        run: |
+          apt-get update
+          apt-get install -y ./dist/${{ matrix.artifact_glob }} python3
+
+      - name: "Test the installed FasterCap"
+        run: >
+          python3 tests/check_capacitance.py
+          --fastercap /usr/bin/FasterCap
+          --geometry cube
+          --tolerance 0.01
+          --workdir /tmp/cube
+          -- -a0.001
+
   update_assets:
     name: "Update Assets"
-    needs: [build, test]
+    needs: [build, test, test_deb]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
