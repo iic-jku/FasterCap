@@ -168,7 +168,6 @@ int CMultHier::ComputePanelPotentials_2fast()
     linksPerBlock = AUTOREFINE_LINK_CHUNK_SIZE * linkChunkNum;
     const unsigned long linksNum = m_ulLinksNum[m_ucInteractionLevel];
     const unsigned long nodeNumPre0 = m_ulNodeNum[AUTOREFINE_HIER_PRE_0_LEVEL];
-    const unsigned long chunkAdjustmentShift = linkChunkNum * m_ulCurrBlock;
 
     // scan all links, in blocks
 	for(linkIndex=0, nodeIndex=0; linkIndex < linksNum; linkIndex += linksPerBlock) {
@@ -184,6 +183,9 @@ int CMultHier::ComputePanelPotentials_2fast()
 				return ret;
 			}
 		}
+
+        // LoadLinks() has changed 'm_ulCurrBlock'
+        const unsigned long chunkAdjustmentShift = linkChunkNum * m_ulCurrBlock;
 
         // scan the nodes whose links are in the current block (of course they must be ordered)
         // but first we need to find where to stop (to avoid scanning all nodes every time)
