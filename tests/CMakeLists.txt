@@ -31,6 +31,8 @@ function(fastercap_test name geometry tolerance)
             --workdir ${CMAKE_CURRENT_BINARY_DIR}/${name}
             ${out_of_core}
             -- ${arg_UNPARSED_ARGUMENTS})
+    # a hang fails the test instead of blocking the CI job
+    set_tests_properties(${name} PROPERTIES TIMEOUT 300)
 endfunction()
 
 # 0.2 % below the analytic value at -a0.001
@@ -44,3 +46,7 @@ fastercap_test(three_cubes_galerkin three_cubes 0.02 -a0.01 -g)
 # 2.4M links (over two link chunks) at -m0.005 -d0.5; C12 = C13 within 0.02 %, symmetric
 # within 0.01 %; the out-of-core matrix must equal the in-core one
 fastercap_test(three_cubes_out_of_core three_cubes 0.01 OUT_OF_CORE -m0.005 -d0.5)
+# block preconditioner with blocks of 2: blocks rooted at a leaf were never completed, and the
+# run hung after writing past the block element array; C12 = C13 within 0.07 %, symmetric
+# within 0.3 %
+fastercap_test(three_cubes_block_precond three_cubes 0.01 -pb2)
