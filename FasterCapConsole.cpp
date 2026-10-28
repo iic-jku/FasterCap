@@ -44,13 +44,22 @@ static void ConsoleAssertHandler(const wxString& file, int line, const wxString&
 
 int main(int argc, char **argv)
 {
-    int ret;
+    int i, ret;
+    char bOption;
 
     wxSetAssertHandler(ConsoleAssertHandler);
 
+    // the character after '-b' ('-b?', '-bv'), as FasterCapApp::OnInit() finds it for the GUI
+    bOption = '\0';
+    for(i=1; i<argc; i++) {
+        if(argv[i][0] == '-' && argv[i][1] == 'b') {
+            bOption = argv[i][2];
+        }
+    }
+
     FasterCapConsole console;
 
-    ret = console.main(argc, argv);
+    ret = console.main(argc, argv, bOption);
 
     return ret;
 }
