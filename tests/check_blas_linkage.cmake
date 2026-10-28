@@ -6,6 +6,10 @@ if(NOT result EQUAL 0)
     message(FATAL_ERROR "otool -L ${EXECUTABLE} failed")
 endif()
 
+# without the first line, the executable itself, whose path may contain "blas"
+string(FIND "${libraries}" "\n" first_line_end)
+math(EXPR first_line_end "${first_line_end} + 1")
+string(SUBSTRING "${libraries}" ${first_line_end} -1 libraries)
 string(REPLACE "\n" ";" lines "${libraries}")
 set(foreign)
 foreach(line IN LISTS lines)
