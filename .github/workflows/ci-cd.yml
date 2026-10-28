@@ -285,6 +285,13 @@ jobs:
         cp deps/wxWidgets/lib/vc14x_x64_dll/wxbase32u_vc14x_x64.dll build/Release/
         cp deps/blas/bin/libopenblas.dll build/Release/openblas.dll       
 
+    - name: "[C++] Test"
+      run: >
+        ctest
+        --test-dir ${{ steps.strings.outputs.build-output-dir }}
+        --build-config Release
+        --output-on-failure
+
     - name: "[C++] Archive artifacts (UNIX)"
       if: contains(matrix.arch, 'linux') || contains(matrix.arch, 'darwin')
       run: |
