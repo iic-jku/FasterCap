@@ -5,9 +5,15 @@
 - This is `iic-jku/FasterCap` (remote `jku`, formerly `martinjankoehler/FasterCap`), the
   maintained fork of `ediloren/FasterCap` (remote `upstream`, 6.0.7, `b42179a`, dormant).
   Its issues are written `iic-jku/FasterCap#N` outside this repository.
-- CMake builds the sibling checkouts `../LinAlgebra` and `../Geometry` (`add_subdirectory`).
-  CI checks out the `master` of `iic-jku/LinAlgebra` and `iic-jku/Geometry`, forks of the
-  ediloren repositories with their own AGENTS.md.
+- CMake builds the sibling checkouts `../LinAlgebra` and `../Geometry` (`add_subdirectory`),
+  and the sources include `LinAlgebra/…` and `Geometry/…` from `..`. CI checks out the
+  `master` of `iic-jku/LinAlgebra` and `iic-jku/Geometry`, forks of the ediloren
+  repositories with their own AGENTS.md.
+- Locally (`~/Source/FastFieldSolvers`), the working checkouts are `FasterCap_MJK`,
+  `LinAlgebra_MJK` and `Geometry`; `FasterCap`, `LinAlgebra`, `LinAlgebra.orig` and
+  `LinAlgebra_orig` are references only. Build from `work/`, whose symlinks `FasterCap`,
+  `LinAlgebra` and `Geometry` point to the working checkouts: a build from `FasterCap_MJK`
+  itself would use the reference `LinAlgebra`.
 - Remotes use SSH URLs (`git@github.com:…`).
 - The repository stays in ediloren's fork network while PRs to upstream are open, so GitHub
   proposes `ediloren/FasterCap` as the base of a new PR: pick `iic-jku/FasterCap` `master`
@@ -71,9 +77,10 @@
 ## Build and tests
 
 - macOS: `export OpenMP_ROOT=$(brew --prefix)/opt/libomp`, then
-  `cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFASTFIELDSOLVERS_HEADLESS=ON
+  `cmake -S ../work/FasterCap -B ../work/build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  -DFASTFIELDSOLVERS_HEADLESS=ON
   -DwxWidgets_CONFIG_EXECUTABLE=$(brew --prefix)/bin/wx-config` and
-  `cmake --build build -j`. Linux: the same with `/usr/bin/wx-config`.
+  `cmake --build ../work/build -j`. Linux: the same with `/usr/bin/wx-config`.
 - Spell build types exactly (`Release`, `RelWithDebInfo`): an unknown `CMAKE_BUILD_TYPE`
   silently builds without `-O`. Benchmarks compare builds of the same type.
 - There is no test suite yet, and CI only checks the banner. Each bug fix gets a test that
