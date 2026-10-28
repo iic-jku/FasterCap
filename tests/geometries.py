@@ -81,6 +81,9 @@ def icosphere_panels(name, radius, depth):
 SIDE = 1.0
 GAP = 0.5
 RADIUS = 1.0
+# concentric spheres of #7 (ediloren/FasterCap#8)
+INNER_RADIUS = 0.05
+OUTER_RADIUS = 0.1
 
 
 def write_cube(directory):
@@ -110,8 +113,32 @@ def write_sphere(directory):
     return path
 
 
+def write_concentric_spheres(directory):
+    """Inner and outer sphere of 1280 triangles each, in one file.
+
+    The triangles are 'Q' panels with a repeated vertex: only 'Q' panels go through
+    C2DTriangulate, whose assert #7 reports, and -a reads the input at each iteration.
+    """
+    triangles = (icosphere_panels("inner", INNER_RADIUS, 3)
+                 + icosphere_panels("outer", OUTER_RADIUS, 3))
+    panels = [("Q", name, vertices + (vertices[0],)) for _, name, vertices in triangles]
+    _write_panels(os.path.join(directory, "spheres.txt"), "concentric spheres", panels)
+    path = os.path.join(directory, "concentric_spheres.lst")
+    _write_list(path, ["C spheres.txt 1.0 0 0 0"])
+    return path
+
+
+def concentric_spheres_analytic(a, b):
+    """Sphere of radius a inside a thin shell of radius b, in free space."""
+    # all field lines of the inner sphere end on the shell: C12 = -C11
+    c11 = FOUR_PI_EPS0 * a * b / (b - a)
+    return {(1, 1): c11, (1, 2): -c11, (2, 1): -c11, (2, 2): c11 + FOUR_PI_EPS0 * b}
+
+
 GEOMETRIES = {
     "cube": Geometry(write_cube, 1, {(1, 1): CUBE_FACTOR * FOUR_PI_EPS0 * SIDE}, []),
     "three_cubes": Geometry(write_three_cubes, 3, {}, [((1, 2), (1, 3)), ((2, 2), (3, 3))]),
     "sphere": Geometry(write_sphere, 1, {(1, 1): FOUR_PI_EPS0 * RADIUS}, []),
+    "concentric_spheres": Geometry(write_concentric_spheres, 2,
+                                   concentric_spheres_analytic(INNER_RADIUS, OUTER_RADIUS), []),
 }
