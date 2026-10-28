@@ -284,6 +284,7 @@ jobs:
       run: |
         cp deps/wxWidgets/lib/vc14x_x64_dll/wxbase32u_vc14x_x64.dll build/Release/
         cp deps/blas/bin/libopenblas.dll build/Release/openblas.dll       
+        cp deps/blas/bin/libopenblas.dll build/LinAlgebra/tests/Release/openblas.dll
 
     - name: "[C++] Test"
       run: >
