@@ -76,6 +76,14 @@ Then you can launch the build process with:
 Remark: at run time you will see the an "Assert failure" message. This is a wxWidgets issue, see ["debug message when running without session manager"](http://trac.wxwidgets.org/ticket/16024).
 The assert is harmless, and it is fixed starting from wxWidgets 3.1.1
 
+## Testing
+
+The regression tests in `tests/` need Python 3. After the build, run them with:
+
+`ctest --test-dir <build directory> --output-on-failure`
+
+Each test runs FasterCap on a generated geometry and checks the capacitance matrix: exit code, signs, symmetry, analytic values where they are known (cube, sphere) and entries that are equal by the symmetry of the geometry.
+
 ## Additional packages
 
 FasterCap also requires two additional source code packages, that are available through the same official repositories you can access from http://www.fastfieldsolvers.com/ or directly from GitHub.

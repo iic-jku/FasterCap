@@ -151,3 +151,7 @@ set (EXTRA_LIBS ${EXTRA_LIBS}  -lm -lstdc++ -lblas)
 # Specify compile options to use when compiling a given target.
 target_compile_options(FasterCap PUBLIC ${FASTFIELDSOLVERS_COMPILE_OPTIONS})
 target_link_libraries(FasterCap ${EXTRA_LIBS} ${WXWIDGETS_LIBS} ${EIGEN_LIBS})
+
+# regression tests, run with: ctest --test-dir <build directory> --output-on-failure
+enable_testing()
+add_subdirectory(tests)
