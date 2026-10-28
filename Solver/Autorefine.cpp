@@ -4813,6 +4813,16 @@ int CAutoRefine::CreateFileMap(char *fileinname, FILE *fid, StlFilePosMap *fileP
 	return ret;
 }
 
+// FastCap2 also reads PATRAN neutral files, which start with the header of the title packet:
+// '25' and eight more integers
+static bool IsPatranNeutralFile(const char *firstLine)
+{
+	int packet[9];
+
+	return sscanf(firstLine, "%d %d %d %d %d %d %d %d %d", &packet[0], &packet[1], &packet[2], &packet[3],
+	              &packet[4], &packet[5], &packet[6], &packet[7], &packet[8]) == 9 && packet[0] == 25;
+}
+
 int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosMap *parentFilePosMap, CAutoRefGlobalVars *globalVars, bool isdiel, C3DVector offset, double outpermRe, double outpermIm,
                                   const char *groupname, double inpermRe, double inpermIm, C3DVector dielrefpoint)
 {
@@ -4887,6 +4897,13 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 	}
 
 	fgets(line, AUTOREFINE_MAX_LINE_LEN, fid);
+
+	// read as FasterCap format, it would give no panels
+	if(itp == parentFilePosMap->end() && IsPatranNeutralFile(line)) {
+		ErrMsg("Error: '%s' is a PATRAN neutral file, which FasterCap cannot read, aborting\n", fileinname);
+		fclose(fid);
+		return FC_FILE_ERROR;
+	}
 
 	// read all fastcap file storing panel info
 	// according to the their conductors
