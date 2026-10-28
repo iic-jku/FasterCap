@@ -2,18 +2,32 @@
 
 ## Repositories
 
-- This is `iic-jku/FasterCap` (remote `jku`, formerly `martinjankoehler/FasterCap`), a fork
-  of `ediloren/FasterCap` (remote `upstream`, 6.0.7, `b42179a`). Its issues are written
-  `iic-jku/FasterCap#N` outside this repository.
+- This is `iic-jku/FasterCap` (remote `jku`, formerly `martinjankoehler/FasterCap`), the
+  maintained fork of `ediloren/FasterCap` (remote `upstream`, 6.0.7, `b42179a`, dormant).
+  Its issues are written `iic-jku/FasterCap#N` outside this repository.
 - CMake builds the sibling checkouts `../LinAlgebra` and `../Geometry` (`add_subdirectory`).
   CI checks out the `master` of `iic-jku/LinAlgebra` and `iic-jku/Geometry`, forks of the
   ediloren repositories with their own AGENTS.md.
 - Remotes use SSH URLs (`git@github.com:…`).
-- Fixes meant for upstream go on branches based on `upstream/master`, one concern each, as
-  for the open PRs `ediloren/FasterCap#4`–`#7`. Fork-only work (CI, packaging, docs) stays
-  separate from them.
+- The repository stays in ediloren's fork network while PRs to upstream are open, so GitHub
+  proposes `ediloren/FasterCap` as the base of a new PR: pick `iic-jku/FasterCap` `master`
+  (`gh pr create --repo iic-jku/FasterCap --base master`).
 - `klayout-pex` uses the released `.deb`/`.tar.gz` assets: a change of the numbers or of the
   output format is a behavior change for it.
+
+## Branches
+
+- `master` is `upstream/master` plus merge commits (`--no-ff`) of feature branches only;
+  `master-backup-<date>` branches keep earlier histories. Feature branches are never deleted.
+- Changes offered upstream (`ediloren/FasterCap#4`–`#7`: `wxwidgets-update`,
+  `cmake-openmp-fix`, `out-of-core-unix-support`, `blas-support`) and other upstreamable
+  ones (`hot-loop-optimizations`, `pdf-doc`) live on branches based on `upstream/master`.
+  Fix them with new commits on the branch, never by rewriting it (the PRs show the history),
+  then merge the branch into `master` again.
+- Fork-only changes (CI, packaging, AGENTS.md) go on branches based on `master`, e.g.
+  `ci-and-agents`.
+- Tests go on `regression-tests`, based on `master`: every fix gets a test there that fails
+  without it. `master` merges `regression-tests` together with the fixes.
 
 ## Scope
 
