@@ -131,7 +131,8 @@ int LogMsg(const char *fmt,...)
 		msg = wxT("Error: LogMsg() is not able to print the message\n");
 	}
 
-	std::cout << msg;
+	// flushed, so that piped output shows the progress and the last message of a stopped run
+	std::cout << msg << std::flush;
 
 	return ret;
 }
@@ -154,7 +155,8 @@ int ErrMsg(const char *fmt,...)
 		msg = wxT("Error: ErrMsg() is not able to print the message\n");
 	}
 
-	std::cout << msg;
+	// flushed, so that piped output shows the progress and the last message of a stopped run
+	std::cout << msg << std::flush;
 
 	return ret;
 }
