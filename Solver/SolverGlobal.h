@@ -48,6 +48,8 @@
 #define FC_EXCEPTION_ERROR      98
 #define FC_USER_BREAK			125
 
+// auto-refinement (-a) exhausted SOLVE_MAX_AUTO_ITERATIONS without converging
+#define FC_CONVERGENCE_FAILED	75
 
 #define G_KILOBYTE	1024
 #define G_MEGABYTE	1048576

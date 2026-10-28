@@ -475,6 +475,15 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
                 // free memory, to be ready for next iteration
                 DeallocateMemory(AUTOREFINE_DEALLMEM_AT_END, globalVars);
             }
+
+            // loop exhausted without a 'diff <= target' break: capRe/capIm
+            // were never assigned, so return the last computed iteration
+            // and flag non-convergence instead of silently returning success
+            if(i >= SOLVE_MAX_AUTO_ITERATIONS) {
+                capRe = cRe[SOLVE_MAX_AUTO_ITERATIONS - 1];
+                capIm = cIm[SOLVE_MAX_AUTO_ITERATIONS - 1];
+                ret = FC_CONVERGENCE_FAILED;
+            }
         }
         else {
             // no automatic calculation of parameters
@@ -955,6 +964,9 @@ void CSolveCap::PrintRetError(int retErr)
 	}
 	else if(retErr == FC_USER_BREAK) {
 		ErrMsg("\n\nWarning: Program execution stopped on user request!\n");
+	}
+	else if(retErr == FC_CONVERGENCE_FAILED) {
+		ErrMsg("\n\nWarning: Automatic refinement did not converge within %d iterations, relative error target not met. Returning best-effort (last computed) result, not a converged one!\n", SOLVE_MAX_AUTO_ITERATIONS);
 	}
 	else if(retErr != FC_NORMAL_END) {
 		ErrMsg("\n\nError: Unknown error code, program execution stopped!\n");
