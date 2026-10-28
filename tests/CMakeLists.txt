@@ -2,6 +2,14 @@
 # and checks the matrix (exit code, signs, symmetry, analytic values, symmetric entries).
 # Tolerances are relative; the comment of each test says why its tolerance is enough.
 
+# macOS: LinAlgebra uses the Accelerate headers, so FasterCap must link Accelerate's BLAS,
+# not one found elsewhere (MacPorts OpenBLAS)
+if(APPLE)
+    add_test(NAME macos_blas_is_accelerate
+        COMMAND ${CMAKE_COMMAND} -DEXECUTABLE=$<TARGET_FILE:FasterCap>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_blas_linkage.cmake)
+endif()
+
 find_package(Python3 COMPONENTS Interpreter)
 if(NOT Python3_Interpreter_FOUND)
     message(STATUS "Python 3 not found: no regression tests")
