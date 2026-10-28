@@ -110,8 +110,18 @@ def write_sphere(directory):
     return path
 
 
+def write_degenerate_triangle(directory):
+    """The cube and, beside it, a triangle whose vertices are on a line: no self-potential."""
+    panels = cube_panels("c", SIDE) + [("T", "c", [(2, 0, 0), (3, 0, 0), (4, 0, 0)])]
+    _write_panels(os.path.join(directory, "degenerate.txt"), "cube and degenerate triangle", panels)
+    path = os.path.join(directory, "degenerate_triangle.lst")
+    _write_list(path, ["C degenerate.txt 1.0 0 0 0"])
+    return path
+
+
 GEOMETRIES = {
     "cube": Geometry(write_cube, 1, {(1, 1): CUBE_FACTOR * FOUR_PI_EPS0 * SIDE}, []),
     "three_cubes": Geometry(write_three_cubes, 3, {}, [((1, 2), (1, 3)), ((2, 2), (3, 3))]),
     "sphere": Geometry(write_sphere, 1, {(1, 1): FOUR_PI_EPS0 * RADIUS}, []),
+    "degenerate_triangle": Geometry(write_degenerate_triangle, 1, {}, []),
 }

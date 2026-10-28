@@ -4,13 +4,15 @@ Usage: check_capacitance.py --fastercap <exe> --geometry <name> --tolerance <rel
                             --workdir <dir> -- <FasterCap options>
 
 Checks, for the last matrix printed:
-- exit code 0, and one row per conductor of the geometry
+- the exit code (0 unless --exit-code), and one row per conductor of the geometry
 - finite entries, positive diagonal, negative off-diagonal terms
 - symmetry, and row sums not below zero (capacitance to infinity), within the tolerance
 - the analytic values and the entries that are equal by symmetry of the geometry
 
 With --out-of-core, FasterCap runs again out-of-core with blocks of one link chunk, and the
 two matrices must agree.
+
+With --no-matrix, FasterCap must stop without printing a matrix.
 """
 
 import argparse
@@ -109,14 +111,17 @@ def run(fastercap, list_file, options):
     return command, result.returncode, result.stdout
 
 
-def check_run(command, returncode, output, geometry, tolerance):
+def check_run(command, returncode, output, geometry, tolerance, exit_code=0, no_matrix=False):
     errors = []
     if isinstance(returncode, str):
         errors.append(returncode)
-    elif returncode != 0:
-        errors.append("exit code %d" % returncode)
+    elif returncode != exit_code:
+        errors.append("exit code %d, expected %d" % (returncode, exit_code))
     names, rows = parse_last_matrix(output)
-    if names is None:
+    if no_matrix:
+        if names is not None:
+            errors.append("a capacitance matrix in the output")
+    elif names is None:
         errors.append("no capacitance matrix in the output")
     else:
         errors += check_matrix(rows, geometry, tolerance)
@@ -146,6 +151,9 @@ def main():
     parser.add_argument("--workdir", required=True, help="directory for the input files")
     parser.add_argument("--out-of-core", action="store_true",
                         help="run again out-of-core and compare the matrices")
+    parser.add_argument("--exit-code", type=int, default=0, help="expected exit code")
+    parser.add_argument("--no-matrix", action="store_true",
+                        help="FasterCap must stop without a capacitance matrix")
     parser.add_argument("fastercap_args", nargs=argparse.REMAINDER,
                         help="FasterCap options after --, e.g. -- -a0.01")
     args = parser.parse_args()
@@ -156,7 +164,8 @@ def main():
     list_file = os.path.abspath(geometry.write(args.workdir))
 
     command, returncode, output = run(args.fastercap, list_file, fastercap_args)
-    rows, errors = check_run(command, returncode, output, geometry, args.tolerance)
+    rows, errors = check_run(command, returncode, output, geometry, args.tolerance,
+                             args.exit_code, args.no_matrix)
 
     if args.out_of_core and not errors:
         ratio, error = out_of_core_ratio(args.fastercap, list_file, fastercap_args)

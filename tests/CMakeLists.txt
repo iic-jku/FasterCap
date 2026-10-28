@@ -22,12 +22,19 @@ if(NOT Python3_Interpreter_FOUND)
     return()
 endif()
 
-# fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] <FasterCap options>...)
+# fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [NO_MATRIX] [EXIT_CODE <code>]
+#                <FasterCap options>...)
 function(fastercap_test name geometry tolerance)
-    cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE" "" "")
-    set(out_of_core)
+    cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE;NO_MATRIX" "EXIT_CODE" "")
+    set(flags)
     if(arg_OUT_OF_CORE)
-        set(out_of_core --out-of-core)
+        list(APPEND flags --out-of-core)
+    endif()
+    if(arg_NO_MATRIX)
+        list(APPEND flags --no-matrix)
+    endif()
+    if(DEFINED arg_EXIT_CODE)
+        list(APPEND flags --exit-code ${arg_EXIT_CODE})
     endif()
     add_test(NAME ${name}
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_capacitance.py
@@ -35,7 +42,7 @@ function(fastercap_test name geometry tolerance)
             --geometry ${geometry}
             --tolerance ${tolerance}
             --workdir ${CMAKE_CURRENT_BINARY_DIR}/${name}
-            ${out_of_core}
+            ${flags}
             -- ${arg_UNPARSED_ARGUMENTS})
     # a hang fails the test instead of blocking the CI job
     set_tests_properties(${name} PROPERTIES TIMEOUT 300)
@@ -59,3 +66,9 @@ fastercap_test(three_cubes_out_of_core three_cubes 0.01 OUT_OF_CORE -m0.005 -d0.
 # run hung after writing past the block element array; C12 = C13 within 0.07 %, symmetric
 # within 0.3 %
 fastercap_test(three_cubes_block_precond three_cubes 0.01 -pb2)
+# -t1e-30 is out of reach of GMRES: exit code 75 (FC_CONVERGENCE_FAILED) with the matrix of the
+# last iteration, as accurate as three_cubes_default
+fastercap_test(three_cubes_not_converged three_cubes 0.01 EXIT_CODE 75 -t1e-30)
+# a triangle with its vertices on a line has no self-potential, the matrix would be NaN: exit
+# code 65 (FC_INVALID_RESULT)
+fastercap_test(degenerate_triangle degenerate_triangle 0 NO_MATRIX EXIT_CODE 65)
