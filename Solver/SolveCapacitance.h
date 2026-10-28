@@ -148,6 +148,8 @@ protected:
 	};
 	CSuperPrecondElement *m_clsSupPrecondElements;
 	unsigned int m_uiGmresPrealloc[AUTOPANEL_MAX_NUM_OF_HIERARCHIES];
+	// false if a GMRES solve of the last Solve() stopped above its tolerance
+	bool m_bGmresConverged;
 	unsigned char m_ucAlternatePrecond;
 	CLin_Vector *m_pCondCharges;
 
