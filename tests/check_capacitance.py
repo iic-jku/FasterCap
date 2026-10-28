@@ -13,14 +13,19 @@ With --out-of-core, FasterCap runs again out-of-core with blocks of one link chu
 two matrices must agree.
 
 With --no-matrix, FasterCap must stop without printing a matrix.
+
+With --interrupt, an out-of-core run gets SIGINT once it has written link chunks: it must stop
+with FC_USER_BREAK and delete its temporary files.
 """
 
 import argparse
 import math
 import os
 import re
+import signal
 import subprocess
 import sys
+import time
 
 # keep the source tree free of __pycache__
 sys.dont_write_bytecode = True
@@ -37,6 +42,9 @@ BLOCK_MBYTES = 24
 OUT_OF_CORE_TOLERANCE = 1e-5
 # below the CTest timeout, so that a hanging run still reports its output
 RUN_TIMEOUT = 240
+# FC_USER_BREAK
+USER_BREAK_EXIT_CODE = 125
+TEMPORARY_FILE = re.compile(r"frc[lp][0-9A-F]+\.tmp$")
 
 
 def parse_last_matrix(output):
@@ -143,6 +151,46 @@ def out_of_core_ratio(fastercap, list_file, options):
     return int(free.group(1)) / float(BLOCK_MBYTES), None
 
 
+def interrupt_out_of_core(fastercap, list_file, options, ratio, workdir):
+    """errors and output of an out-of-core run interrupted after writing two link chunks"""
+    tmpdir = os.path.join(workdir, "tmp")
+    os.makedirs(tmpdir, exist_ok=True)
+
+    def temporary_files():
+        return [f for f in os.listdir(tmpdir) if TEMPORARY_FILE.match(f)]
+
+    for f in temporary_files():
+        os.remove(os.path.join(tmpdir, f))
+    command = [os.path.abspath(fastercap), os.path.basename(list_file), "-b"] + options + ["-f%g" % ratio]
+    log = os.path.join(workdir, "interrupted.log")
+    with open(log, "w") as out:
+        process = subprocess.Popen(command, cwd=os.path.dirname(list_file), stdout=out,
+                                   stderr=subprocess.STDOUT, env=dict(os.environ, TMPDIR=tmpdir))
+        deadline = time.time() + RUN_TIMEOUT
+        while process.poll() is None and time.time() < deadline \
+                and sum(f.startswith("frcl") for f in temporary_files()) < 2:
+            time.sleep(0.01)
+        errors = []
+        if process.poll() is not None:
+            errors.append("the run ended before writing two link chunks")
+        else:
+            process.send_signal(signal.SIGINT)
+        try:
+            returncode = process.wait(timeout=RUN_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            returncode = process.wait()
+            errors.append("no exit %d s after SIGINT" % RUN_TIMEOUT)
+    print(" ".join(command))
+    if returncode != USER_BREAK_EXIT_CODE:
+        errors.append("exit code %d, expected %d" % (returncode, USER_BREAK_EXIT_CODE))
+    left = temporary_files()
+    if left:
+        errors.append("%d temporary files left, e.g. %s" % (len(left), left[0]))
+    with open(log) as f:
+        return errors, f.read()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--fastercap", required=True, help="FasterCap executable")
@@ -151,6 +199,8 @@ def main():
     parser.add_argument("--workdir", required=True, help="directory for the input files")
     parser.add_argument("--out-of-core", action="store_true",
                         help="run again out-of-core and compare the matrices")
+    parser.add_argument("--interrupt", action="store_true",
+                        help="interrupt an out-of-core run instead (not on Windows)")
     parser.add_argument("--exit-code", type=int, default=0, help="expected exit code")
     parser.add_argument("--no-matrix", action="store_true",
                         help="FasterCap must stop without a capacitance matrix")
@@ -162,6 +212,15 @@ def main():
     geometry = geometries.GEOMETRIES[args.geometry]
     os.makedirs(args.workdir, exist_ok=True)
     list_file = os.path.abspath(geometry.write(args.workdir))
+
+    if args.interrupt:
+        ratio, error = out_of_core_ratio(args.fastercap, list_file, fastercap_args)
+        if error:
+            errors, output = [error], ""
+        else:
+            errors, output = interrupt_out_of_core(args.fastercap, list_file, fastercap_args, ratio,
+                                                   args.workdir)
+        return report(errors, output)
 
     command, returncode, output = run(args.fastercap, list_file, fastercap_args)
     rows, errors = check_run(command, returncode, output, geometry, args.tolerance,
@@ -187,6 +246,10 @@ def main():
                         if relative_difference(value, ooc_value) > OUT_OF_CORE_TOLERANCE:
                             errors.append("out-of-core C%d%d = %g, in-core %g" % (i + 1, j + 1, ooc_value, value))
 
+    return report(errors, output)
+
+
+def report(errors, output):
     if errors:
         tail = output.splitlines()[-OUTPUT_TAIL_LINES:]
         print("FAILED:\n  " + "\n  ".join(errors))

@@ -22,13 +22,16 @@ if(NOT Python3_Interpreter_FOUND)
     return()
 endif()
 
-# fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [NO_MATRIX] [EXIT_CODE <code>]
-#                <FasterCap options>...)
+# fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [INTERRUPT] [NO_MATRIX]
+#                [EXIT_CODE <code>] <FasterCap options>...)
 function(fastercap_test name geometry tolerance)
-    cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE;NO_MATRIX" "EXIT_CODE" "")
+    cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE;INTERRUPT;NO_MATRIX" "EXIT_CODE" "")
     set(flags)
     if(arg_OUT_OF_CORE)
         list(APPEND flags --out-of-core)
+    endif()
+    if(arg_INTERRUPT)
+        list(APPEND flags --interrupt)
     endif()
     if(arg_NO_MATRIX)
         list(APPEND flags --no-matrix)
@@ -75,3 +78,8 @@ fastercap_test(degenerate_triangle degenerate_triangle 0 NO_MATRIX EXIT_CODE 65)
 # FasterCap can't read PATRAN neutral files: exit code 74 (FC_FILE_ERROR), not the matrix
 # without the dielectric
 fastercap_test(patran_dielectric patran_dielectric 0 NO_MATRIX EXIT_CODE 74)
+# SIGINT while out-of-core: exit code 125 (FC_USER_BREAK), temporary files deleted; Windows has
+# no SIGINT for a single process
+if(NOT WIN32)
+    fastercap_test(three_cubes_interrupted three_cubes 0 INTERRUPT -m0.005 -d0.5)
+endif()
