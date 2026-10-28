@@ -89,6 +89,9 @@ int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
 		LogMsg("\n");
 
 		if(bOption != 'v') {
+			LogMsg(FCG_HEADER_FORK);
+			LogMsg("\n\n");
+
 			// print error
 			ErrMsg((const char*)errMsg);
 			LogMsg("Usage: %s <input file> [-a<relative error>] [-ap]\n", (const char*)argv[0]);
