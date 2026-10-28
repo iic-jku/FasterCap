@@ -47,6 +47,11 @@ if (APPLE)
 endif()
 
 find_package(BLAS REQUIRED)
+if ("${BLAS_INCLUDE_DIRS}" STREQUAL "")
+# fallback for CI/CD environment
+   SET(BLAS_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/../../deps/blas/include)
+endif()
+message(STATUS "BLAS found, Includes: ${BLAS_INCLUDE_DIRS}")
 include_directories(${BLAS_INCLUDE_DIRS})
 set(EXTRA_LIBS ${EXTRA_LIBS} ${BLAS_LIBRARIES})
 
@@ -141,7 +146,7 @@ endif()
 
 add_executable (FasterCap ${FastFieldSolvers_Sources} ${FasterCap_Sources})
 
-set (EXTRA_LIBS ${EXTRA_LIBS}  -lm -lstdc++)
+set (EXTRA_LIBS ${EXTRA_LIBS}  -lm -lstdc++ -lblas)
 
 # Specify compile options to use when compiling a given target.
 target_compile_options(FasterCap PUBLIC ${FASTFIELDSOLVERS_COMPILE_OPTIONS})

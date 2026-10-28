@@ -1,0 +1,467 @@
+name: Multi-platform C++ build
+
+on:
+  workflow_call:
+
+# NOTE: concurrency settings must be defined in calling workflow!
+#       otherwise unexpected cancellations will happen
+#   example error: "Canceling since a higher priority waiting request for 'martinjankoehler/klayout-pex-release-v0.1.4-Multi-platform Python/C++ build/test' exists"
+
+jobs:
+  build:
+    name: Build ${{matrix.os}}/${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          - arch: x86_64-apple-darwin
+            os: macos-latest
+            cpu: x86_64
+            artifact_template: 'FasterCap-<<VERSION>>.macos-amd64.tar.gz'
+            c_compiler: clang
+            cpp_compiler: clang
+          - arch: aarch64-apple-darwin          
+            os: macos-latest
+            cpu: arm64
+            artifact_template: 'FasterCap-<<VERSION>>.macos-arm64.tar.gz'
+            c_compiler: clang
+            cpp_compiler: clang
+          - arch: x86_64-unknown-linux-gnu
+            cpu: x86_64
+            os: ubuntu-22.04  # ubuntu-latest
+            apt_build_deps: libomp-dev libopenblas-dev wx3.0-headers libwxbase3.0-dev
+            apt_install_deps: 'libc6 (>= 2.35), libwxbase3.0-0v5, libgomp1, libopenblas0-pthread'
+            apt_arch: amd64
+            artifact_template: 'FasterCap-<<VERSION>>.linux-ubuntu22-amd64.tar.gz'
+            c_compiler: gcc
+            cpp_compiler: g++
+          - arch: x86_64-unknown-linux-gnu
+            cpu: x86_64
+            os: ubuntu-24.04
+            apt_build_deps: libomp-dev libopenblas-dev wx3.2-headers libwxgtk3.2-dev
+            apt_install_deps: 'libc6, libwxbase3.2-1, libgomp1, libopenblas0-pthread'
+            apt_arch: amd64
+            artifact_template: 'FasterCap-<<VERSION>>.linux-ubuntu24-amd64.tar.gz'
+            c_compiler: gcc
+            cpp_compiler: g++
+#          - arch: aarch64-unknown-linux-gnu
+#            cpu: aarch64
+#            os: ubuntu-latest
+#            apt_build_deps: libomp-dev wx3.2-headers libwxgtk3.2-dev
+#            apt_install_deps: 'TODO'
+#            apt_arch: aarch64
+#            artifact_template: 'FasterCap-<<VERSION>>.linux-ubuntu24-arm64.tar.gz'
+#            c_compiler: aarch64-linux-gnu-gcc
+#            cpp_compiler: aarch64-linux-gnu-g++
+          - arch: x86_64-pc-windows-msvc
+            os: windows-latest
+            cpu: x86_64
+            artifact_template: 'FasterCap-<<VERSION>>.windows-amd64.tar.gz'
+            c_compiler: clang
+            cpp_compiler: clang
+
+    steps:
+
+    - name: "Install deps on windows"
+      if: contains(matrix.arch, 'windows')
+      run: |
+        mkdir -p deps/wxWidgets 
+        mkdir -p deps/openblas
+        C:/msys64/usr/bin/wget https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.6/wxWidgets-3.2.6-headers.7z
+        C:/msys64/usr/bin/wget https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.6/wxMSW-3.2.6_vc14x_x64_Dev.7z
+        C:/msys64/usr/bin/wget https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.28/OpenBLAS-0.3.28-x64.zip
+        7z x wxWidgets-3.2.6-headers.7z -odeps/wxWidgets
+        7z x wxMSW-3.2.6_vc14x_x64_Dev.7z -odeps/wxWidgets
+        7z x OpenBLAS-0.3.28-x64.zip -odeps/blas
+        $vcdir = $(vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
+        $msvc = $(join-path $vcdir $('VC\Tools\MSVC\'+$(gc -raw $(join-path $vcdir 'VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt')).Trim()))
+        $lib =  $(join-path $msvc 'bin\Hostx64\x64\lib.exe')
+        & $lib /machine:x64 "/def:deps/blas/lib/libopenblas.def" "/out:deps/blas/lib/openblas.lib" /name:openblas.dll
+        
+    - uses: actions/checkout@v4
+      with:
+        path: 'FastFieldSolvers/FasterCap'
+
+    - name: "Checkout LinAlgebra"
+      uses: actions/checkout@v4
+      with:
+        repository: 'iic-jku/LinAlgebra'
+        path: 'FastFieldSolvers/LinAlgebra'
+
+    - name: "Checkout Geometry"
+      uses: actions/checkout@v4
+      with:
+        repository: 'iic-jku/Geometry'
+        path: 'FastFieldSolvers/Geometry'
+
+    - name: 'Extract FasterCap Version'
+      id: versioning
+      shell: python
+      # Example, for a line:
+      # #define FCG_HEADER_VERSION      "FasterCap version 6.0.8"
+      # ... this would give us: 6.0.8
+      run: |
+         import os
+         import re
+         pattern = re.compile(r'#define FCG_HEADER_VERSION .*(\d+\.\d+\.\d+[^"]*)".*')
+         with open('FastFieldSolvers/FasterCap/FasterCapGlobal.h', 'r') as f:
+           for line in f:
+             m = re.match(pattern, line.strip())
+             if m:
+               version = m.groups()[0]
+               artifact = '${{ matrix.artifact_template }}'.replace('<<VERSION>>', version)
+               with open(os.environ['GITHUB_OUTPUT'], 'a') as o:
+                  print(f"release_version={version}", file=o)
+                  print(f"artifact={artifact}", file=o)
+               break
+    
+    - name: "Prepare environment"
+      if: contains(matrix.arch, 'windows') && endsWith(matrix.arch, '-gnu')
+      run: echo "C:\msys64\usr\bin;$Env:Path" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
+
+    - name: "[C++] Ccache for gh actions"
+      uses: hendrikmuhs/ccache-action@v1.2.14
+      with:
+        key: ${{ github.job }}-${{ matrix.arch }}  # Eg. "some_build-ubuntu-latest"
+        
+    - name: "Set reusable strings"
+      # Turn repeated input strings (such as the build output directory) into step outputs.
+      # These step outputs can be used throughout the workflow file.
+      id: strings
+      shell: bash
+      run: |
+        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+    - name: "Install deps on linux"
+      if: contains(matrix.arch, 'linux')
+      run: | 
+        sudo apt-get -y update
+        sudo apt-get install -y ${{ matrix.apt_build_deps }}
+
+    - name: "Install deps on linux (ARM64 Cross Compile)"
+      if: contains(matrix.arch, 'linux') && contains(matrix.arch, 'aarch64') && endsWith(matrix.arch, '-gnu')
+      run: | 
+        sudo apt-get install -y libc6-dev-arm64-cross g++-aarch64-linux-gnu gcc-aarch64-linux-gnu gfortran-aarch64-linux-gnu
+
+    - name: "Install deps on macos"
+      if: contains(matrix.arch, 'apple') && endsWith(matrix.arch, '-darwin')
+      run: |
+        brew update
+        brew install libomp wxwidgets
+
+    - name: "[C++] Cache CMake dependency source code"
+      uses: actions/cache@v4
+      env:
+        cache-name: cache-cmake-dependency-sources
+      with:
+        # CMake cache is at ${{github.workspace}}/build/_deps but we only will cache folders ending in '-src' to cache source code
+        path: ${{github.workspace}}/build/_deps/*-src
+        # Cache hash is dependent on CMakeLists files anywhere as these can change what's in the cache, as well as cmake modules files
+        key: ${{ env.cache-name }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
+        # it's acceptable to reuse caches for different CMakeLists content if exact match is not available and unlike build caches, we
+        # don't need to restrict these by OS or compiler as it's only source code that's being cached
+        restore-keys: |
+          ${{ env.cache-name }}-
+
+    - name: "[C++] Cache CMake dependency build objects"
+      uses: actions/cache@v4
+      env:
+        cache-name: cache-cmake-dependency-builds
+      with:
+        # CMake cache is at ${{github.workspace}}/build/_deps but we only care about the folders ending in -build or -subbuild
+        path: |
+          ${{github.workspace}}/build/_deps/*-build
+          ${{github.workspace}}/build/_deps/*-subbuild
+        # Cache hash is dependent on CMakeLists files anywhere as these can change what's in the cache, as  well as cmake modules files
+        key: ${{ env.cache-name }}-${{ matrix.arch }}-${{ matrix.cxx }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
+        # it's acceptable to reuse caches for different CMakeLists content if exact match is not available
+        # as long as the OS and Compiler match exactly
+        restore-keys: |
+          ${{ env.cache-name }}-${{ matrix.arch }}-${{ matrix.cxx }}-
+
+    - name: "Restore cached OpenBLAS build (Linux/ARM64 only)"
+      if: contains(matrix.arch, 'linux') && contains(matrix.arch, 'aarch64')
+      id: cache-openblas-build
+      uses: actions/cache/restore@v4
+      with:
+        path: openblas-build
+        key: ${{ matrix.arch }}-openblas-build
+
+    - name: "Build OpenBLAS (Linux/ARM64 only)"
+      if: steps.cache-openblas-build.outputs.cache-hit != 'true' && contains(matrix.arch, 'linux') && contains(matrix.arch, 'aarch64')
+      run: |
+          wget https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.28/OpenBLAS-0.3.28.tar.gz
+          tar xzvf OpenBLAS-0.3.28.tar.gz
+          export OPENBLAS_HOME=$PWD/openblas-build
+          cd OpenBLAS-0.3.28
+          make TARGET=ARMV8 CC=aarch64-linux-gnu-gcc FC=aarch64-linux-gnu-gfortran HOSTCC=gcc NO_LAPACK=1 -j $(nproc)
+          sudo make PREFIX=$OPENBLAS_HOME install
+          cd ..
+
+    - name: "Save cached OpenBLAS build (Linux/ARM64 only)"
+      if: (success() || failure()) && contains(matrix.arch, 'linux') && contains(matrix.arch, 'aarch64')
+      uses: actions/cache/save@v4
+      with:
+        path: openblas-build
+        key: ${{ matrix.arch }}-openblas-build
+
+    - name: "[C++] Configure CMake (macOS)"
+      if: contains(matrix.arch, 'apple') && endsWith(matrix.arch, '-darwin')
+      run: >
+        export OpenMP_ROOT=$(brew --prefix)/opt/libomp;
+        cmake 
+        -B ${{ steps.strings.outputs.build-output-dir }}
+        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        -DFASTFIELDSOLVERS_HEADLESS=ON
+        -DwxWidgets_CONFIG_EXECUTABLE="$(brew --prefix)/bin/wx-config"
+        -S FastFieldSolvers/FasterCap
+
+    - name: "[C++] Configure CMake (Linux/ARM64)"
+      if: contains(matrix.arch, 'linux') && contains(matrix.arch, 'aarch64')
+      run: >
+        export OpenBLAS_HOME=$PWD/openblas-build; 
+        cmake 
+        -B ${{ steps.strings.outputs.build-output-dir }}
+        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        -DFASTFIELDSOLVERS_HEADLESS=ON
+        -DwxWidgets_CONFIG_EXECUTABLE=/usr/bin/wx-config
+        -DCMAKE_PREFIX_PATH=$OpenBLAS_HOME
+        -S FastFieldSolvers/FasterCap
+          
+    - name: "[C++] Configure CMake (Linux/x86_64)"
+      if: contains(matrix.arch, 'linux') && contains(matrix.arch, 'x86_64')
+      run: >
+        cmake 
+        -B ${{ steps.strings.outputs.build-output-dir }}
+        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        -DFASTFIELDSOLVERS_HEADLESS=ON
+        -DwxWidgets_CONFIG_EXECUTABLE=/usr/bin/wx-config
+        -S FastFieldSolvers/FasterCap
+
+    - name: "[C++] Configure CMake (Windows)"
+      if: startswith(matrix.os, 'windows')
+      run: >
+        cmake 
+        -B ${{ steps.strings.outputs.build-output-dir }}
+        -DCMAKE_BUILD_TYPE=RelWithDbgInfo
+        -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cpu }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        -DFASTFIELDSOLVERS_HEADLESS=ON
+        -DwxWidgets_ROOT_DIR=deps/wxWidgets 
+        -DBLAS_ROOT=${{ github.workspace }}/deps/blas
+        -DBLAS_LIBRARIES=${{ github.workspace }}/deps/blas/lib/openblas.lib
+        -S FastFieldSolvers/FasterCap
+
+    - name: "[C++] Build"
+      run: >
+        cmake 
+        --build ${{ steps.strings.outputs.build-output-dir }} 
+        --config Release
+
+    - name: "[C++] Copy DLLs (Windows)"
+      if: startswith(matrix.os, 'windows')
+      run: |
+        cp deps/wxWidgets/lib/vc14x_x64_dll/wxbase32u_vc14x_x64.dll build/Release/
+        cp deps/blas/bin/libopenblas.dll build/Release/openblas.dll       
+
+    - name: "[C++] Archive artifacts (UNIX)"
+      if: contains(matrix.arch, 'linux') || contains(matrix.arch, 'darwin')
+      run: |
+        mkdir assets
+        pushd build
+        tar cvfz ../assets/${{ steps.versioning.outputs.artifact }} FasterCap
+        popd
+
+    - name: "[C++] Archive artifacts (Windows)"
+      if: startswith(matrix.os, 'windows')
+      run: |
+        mkdir assets
+        pushd build/Release
+        tar cvfz ../../assets/${{ steps.versioning.outputs.artifact }} *.*
+        popd
+
+    - name: "Prepare Debian Packages Contents (Linux)"
+      if: contains(matrix.arch, 'linux')
+      run: |
+        mkdir -p .debpkg/usr/bin .debpkg/DEBIAN
+        cp build/FasterCap .debpkg/usr/bin/
+
+    - name: "Build Debian Packages (Linux)"
+      if: contains(matrix.arch, 'linux')
+      uses: jiro4989/build-deb-action@v3
+      id: debian_package
+      with:
+        package: FasterCap
+        package_root: .debpkg
+        maintainer: 'Martin Jan Köhler'
+        version: ${{ steps.versioning.outputs.release_version }}
+        arch: ${{ matrix.apt_arch }}
+        depends: ${{ matrix.apt_install_deps }}
+        desc: 'FasterCap capacitance field solver.'
+        homepage: 'https://github.com/iic-jku/FasterCap'
+
+    - name: "Move Debian Packages into assets (Linux)"
+      if: contains(matrix.arch, 'linux')
+      run: |
+        DEBPKG="${{ steps.debian_package.outputs.file_name }}"
+        mv "$DEBPKG" assets/${DEBPKG/.deb/_${{ matrix.os }}.deb}
+    
+    - name: "[C++] Upload build artifacts"
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.versioning.outputs.artifact }}
+        path: assets/*
+        retention-days: 7
+        if-no-files-found: error
+
+  test:
+    name: Test ${{matrix.os}}/${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    needs: build
+    
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          - os: macos-latest
+            cpu: x86_64
+            artifact_glob: 'FasterCap-*.macos-amd64.tar.gz'
+          - os: macos-latest
+            cpu: arm64
+            artifact_glob: 'FasterCap-*.macos-arm64.tar.gz'
+          - os: ubuntu-22.04
+            cpu: x86_64
+            artifact_glob: 'FasterCap_*_amd64_ubuntu-22.04.deb'  # FasterCap_6.0.8_amd64_ubuntu-22.04.deb
+          - os: ubuntu-24.04
+            cpu: x86_64
+            artifact_glob: 'FasterCap_*_amd64_ubuntu-24.04.deb'
+#          - os: ubuntu-latest
+#            cpu: aarch64
+#            artifact_glob: 'FasterCap_*_arm64_ubuntu-22.04.deb'
+#            deps_cmd: ''
+          - os: windows-latest
+            cpu: x86_64
+            artifact_glob: 'FasterCap-*.windows-amd64.tar.gz'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+           submodules: 'true'
+           fetch-depth: 0
+
+      - name: "Download and merge dist artifacts"
+        uses: actions/download-artifact@v4
+        with:
+          pattern: FasterCap*
+          merge-multiple: true
+          path: .   # destination
+
+      - name: "Install deb 📦s (Linux)"
+        if: contains(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install ./${{ matrix.artifact_glob }}
+
+      - name: "Extract tar.gz (macOS, Windows)"
+        if: contains(matrix.os, 'macos') || contains(matrix.os, 'windows')
+        run: |
+          tar xvfz ${{ matrix.artifact_glob }}
+        shell: bash
+
+      - name: "List dist directory"
+        run: find .
+        shell: bash
+
+      - name: "Install deps (macOS)"
+        if: contains(matrix.os, 'macos')
+        run: |
+           brew install libomp wxwidgets        
+
+      - name: "Test FasterCap (Linux)"
+        if: contains(matrix.os, 'ubuntu')
+        run: |
+          FasterCap | grep Copyright
+
+      - name: "Test FasterCap (macOS)"
+        if: contains(matrix.os, 'macos')
+        run: |
+          ./FasterCap | grep Copyright
+
+      - name: "Test FasterCap (Windows)"
+        if: contains(matrix.os, 'windows')
+        # Windows always sets return code 64 (behaves differently than UNIX)
+        run: |
+          ./FasterCap.exe > output.txt || echo "ignore errorlevel 64, we will look at the output.txt file"
+          grep Copyright output.txt
+        shell: bash
+
+  update_assets:
+    name: "Update Assets"
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+           submodules: 'true'
+           fetch-depth: 0
+
+      - name: "Delete previous dev-latest release"
+        continue-on-error: true
+        if: github.ref == 'refs/heads/master'
+        run: gh release delete "dev-latest" -y
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Download and merge dist artifacts"
+        uses: actions/download-artifact@v4
+        with:
+          pattern: FasterCap*
+          merge-multiple: true
+          path: dist   # destination
+
+      - name: "List dist directory"
+        run: find dist
+
+      - name: "Release dev binaries"
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: github.ref == 'refs/heads/master'
+        with:
+          name: "Continuous Build: latest development"
+          tag_name: "dev-latest"
+          body: "Build with the latest changes in master."
+          draft: false
+          files: |
+            dist/*
+
+      - name: "Release version binaries"
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/*
