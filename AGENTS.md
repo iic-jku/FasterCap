@@ -83,9 +83,10 @@
   `cmake --build ../work/build -j`. Linux: the same with `/usr/bin/wx-config`.
 - Spell build types exactly (`Release`, `RelWithDebInfo`): an unknown `CMAKE_BUILD_TYPE`
   silently builds without `-O`. Benchmarks compare builds of the same type.
-- Run `ctest --test-dir build --output-on-failure` before calling work done; report failures
-  with their output. The tests (`tests/`, Python 3 standard library only) generate their
-  geometries in `tests/geometries.py` and check each matrix with `tests/check_capacitance.py`.
+- Run `ctest --test-dir ../work/build --output-on-failure` before calling work done; report
+  failures with their output. The tests (`tests/`, Python 3 standard library only) generate
+  their geometries in `tests/geometries.py` and check each matrix with
+  `tests/check_capacitance.py`.
 - Each bug fix gets a test that fails without it. A test that needs a workaround means the
   code is wrong: fix the code.
 - Prefer geometries with analytic values or symmetries to stored numbers. Each tolerance
