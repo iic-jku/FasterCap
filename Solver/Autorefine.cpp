@@ -45,8 +45,7 @@
 #include <wx/utils.h> 
 
 #ifdef __DARWIN__
-#include <sys/types.h>
-#include <sys/sysctl.h>
+#include <mach/mach.h>
 #endif
 
 #ifdef __LINUX__
@@ -150,11 +149,17 @@ wxMemorySize portableGetFreeMemory() {
     }
 #else
 #ifdef __DARWIN__
-    const char *key = "hw.memsize_usable";
-    size_t size = sizeof(freeMemory);
-    if (sysctlbyname(key, &freeMemory, &size, NULL, 0) != 0) {
-        printf("Failed to retrieve free memory using sysctlbyname(): %s\n", strerror(errno));
+    // free and inactive pages can be used without swapping
+    // (hw.memsize_usable would be the installed memory)
+    mach_port_t host = mach_host_self();
+    vm_size_t pageSize;
+    vm_statistics64_data_t vmStats;
+    mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+    if (host_page_size(host, &pageSize) == KERN_SUCCESS &&
+        host_statistics64(host, HOST_VM_INFO64, (host_info64_t)&vmStats, &count) == KERN_SUCCESS) {
+        freeMemory = (wxLongLong_t)(vmStats.free_count + vmStats.inactive_count) * (wxLongLong_t)pageSize;
     }
+    mach_port_deallocate(mach_task_self(), host);
 #else
     freeMemory = wxGetFreeMemory();
 #endif
