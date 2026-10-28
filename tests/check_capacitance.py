@@ -175,8 +175,12 @@ def main():
             command, returncode, output = run(args.fastercap, list_file, fastercap_args + ["-f%g" % ratio])
             ooc_rows, ooc_errors = check_run(command, returncode, output, geometry, args.tolerance)
             errors += ["out-of-core: " + e for e in ooc_errors]
+            percent = re.search(r"more than (\S+)% of the available free memory", output)
             if "Going out-of-core" not in output:
                 errors.append("out-of-core: FasterCap stayed in-core")
+            elif not percent or relative_difference(float(percent.group(1)), 100.0 / ratio) > 0.01:
+                errors.append("out-of-core: logged links memory %s%% of the free memory, expected %.3g%%"
+                              % (percent.group(1) if percent else "?", 100.0 / ratio))
             elif not ooc_errors:
                 for i, (row, ooc_row) in enumerate(zip(rows, ooc_rows)):
                     for j, (value, ooc_value) in enumerate(zip(row, ooc_row)):
