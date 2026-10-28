@@ -601,7 +601,7 @@ int CAutoRefine::AutoRefineLinks(CAutoRefGlobalVars globalVars)
 	else {
 		LogMsg("Estimated memory required for storing panel interaction links is: %lu Mbytes\n", (mem_LinksTotal/G_MEGABYTE).ToLong());
 		LogMsg("Available free memory left is: %lu Mbytes\n", (mem_AvailVirtual/G_MEGABYTE).ToLong());
-		LogMsg("Estimated links memory is more than %.0f%% of the available free memory. Going out-of-core.\n", 100.0f / globalVars.m_dOutOfCoreRatio);
+		LogMsg("Estimated links memory is more than %.3g%% of the available free memory. Going out-of-core.\n", 100.0f / globalVars.m_dOutOfCoreRatio);
 
 		// try to create a temporary file, to understand if we can access the temp directory
 		// and if we have the write access rights to it
