@@ -39,21 +39,7 @@ else()
     message(FATAL_ERROR "Unable to find OpenMP. Try exporting the OpenMP_ROOT environmental variable. E.g., on macOS: export OpenMP_ROOT=$(brew --prefix)/opt/libomp")
 endif()
 
-
-# on macOS, LinAlgebra includes the Accelerate headers, so the BLAS library must be Accelerate too
-if (APPLE)
-    set(BLA_VENDOR Apple)
-    add_compile_definitions(LINALG_USE_ACCELERATE ACCELERATE_LAPACK_ILP64=1 ACCELERATE_NEW_LAPACK)
-endif()
-
-find_package(BLAS REQUIRED)
-if ("${BLAS_INCLUDE_DIRS}" STREQUAL "")
-# fallback for CI/CD environment
-   SET(BLAS_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/../../deps/blas/include)
-endif()
-message(STATUS "BLAS found, Includes: ${BLAS_INCLUDE_DIRS}")
-include_directories(${BLAS_INCLUDE_DIRS})
-set(EXTRA_LIBS ${EXTRA_LIBS} ${BLAS_LIBRARIES})
+# BLAS (library, cblas.h, and on macOS Accelerate) comes with the LinAlgebra target
 
 if (NOT MSVC)
   set(FASTFIELDSOLVERS_COMPILE_OPTIONS ${FASTFIELDSOLVERS_COMPILE_OPTIONS} -Wextra -Wall)
@@ -152,8 +138,6 @@ if(${FASTFIELDSOLVERS_HEADLESS} MATCHES OFF)
 endif()
 
 add_executable (FasterCap ${FastFieldSolvers_Sources} ${FasterCap_Sources})
-
-set (EXTRA_LIBS ${EXTRA_LIBS}  -lm -lstdc++ -lblas)
 
 # Specify compile options to use when compiling a given target.
 target_compile_options(FasterCap PUBLIC ${FASTFIELDSOLVERS_COMPILE_OPTIONS})
