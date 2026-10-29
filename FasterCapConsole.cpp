@@ -132,7 +132,8 @@ int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
 			LogMsg("Usage: %s <input file> [-a<relative error>] [-ap]\n", (const char*)argv[0]);
 			LogMsg("                 [-m<mesh>] [-mc<mesh curvature] [-t<tolerance>]\n");
 			LogMsg("                 [-d<interaction coeff>] [-f<outofcore>] [-g]\n");
-			LogMsg("                 [-pj] [-ps<dimension>] [-o] [-r] [-c] [-i] [-v]\n");
+			LogMsg("                 [-pn] [-pj] [-ps<dimension>]\n");
+			LogMsg("                 [-o] [-oi] [-e] [-r] [-c] [-i] [-v]\n");
 			LogMsg("                 [-b|-b?|-bv]\n");
 			LogMsg("DEFAULT VALUES:\n");
 			LogMsg("  -a:  Automatically calculate settings, stop when\n");
@@ -144,6 +145,7 @@ int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
 			LogMsg("  -d:  Direct potential interaction coefficient to mesh refinement ratio = %g\n", defGlobalVars.m_dEpsRatio);
 			LogMsg("  -f:  Out-Of-Core free memory to link memory condition = %g\n", defGlobalVars.m_dOutOfCoreRatio);
 			LogMsg("  -g:  Use Galerkin scheme\n");
+			LogMsg("  -pn: Use no preconditioner\n");
 			LogMsg("  -pj: Use Jacobi Preconditioner\n");
 			LogMsg("  -ps: Use two-levels preconditioner with dimension = %d\n", defGlobalVars.m_uiSuperPreDim);
 			LogMsg("OPTIONS:\n");
