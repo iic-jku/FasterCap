@@ -45,6 +45,13 @@ if (NOT MSVC)
   set(FASTFIELDSOLVERS_COMPILE_OPTIONS ${FASTFIELDSOLVERS_COMPILE_OPTIONS} -Wextra -Wall)
 endif()
 
+# no fused multiply-add contraction, also in LinAlgebra and Geometry: Clang contracts by default
+# on arm64, while x86-64 has no FMA instructions without -march, and -a can then stop after a
+# different number of refinements (iic-jku/FasterCap#10)
+if (NOT MSVC)
+  add_compile_options(-ffp-contract=off)
+endif()
+
 # -s: strip all symbols from the executable
 set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -s")
 
