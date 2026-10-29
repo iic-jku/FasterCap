@@ -9,6 +9,9 @@ Checks, for the last matrix printed:
 - symmetry, and row sums not below zero (capacitance to infinity), within the tolerance
 - the analytic values and the entries that are equal by symmetry of the geometry
 
+Complex permittivities give complex entries: their real parts must have the signs above, and
+the differences are relative to the magnitudes.
+
 With --out-of-core, FasterCap runs again out-of-core with blocks of one link chunk, and the
 two matrices must agree.
 
@@ -17,11 +20,23 @@ With --no-matrix, FasterCap must stop without printing a matrix.
 With --reference, FasterCap runs again on another geometry made of the same panels, and the
 two matrices must agree.
 
+With --names, the conductors must have the given names.
+
+With --same-as, FasterCap runs again with other options, which must give the same matrix.
+
+With --dump-input, FasterCap writes the input geometry back (-oi), and the dump must give the
+same matrix.
+
+With --output-files, the run also writes the refined geometry (-o), the matrix (-e) and the
+charge densities (-c): the refined geometry must hold all refined panels, the matrix file the
+printed matrix, and the charges of each excitation must add up to its row of the matrix.
+
 With --interrupt, an out-of-core run gets SIGINT once it has written link chunks: it must stop
 with FC_USER_BREAK and delete its temporary files.
 """
 
 import argparse
+import cmath
 import math
 import os
 import re
@@ -45,6 +60,8 @@ BLOCK_MBYTES = 24
 OUT_OF_CORE_TOLERANCE = 1e-5
 # the same panels, given differently
 REFERENCE_TOLERANCE = 1e-5
+# files written next to the console output: the same digits, charges with 7 of them
+OUTPUT_TOLERANCE = 1e-5
 # below the CTest timeout, so that a hanging run still reports its output
 RUN_TIMEOUT = 240
 # FC_USER_BREAK
@@ -65,8 +82,14 @@ def parse_last_matrix(output):
     for line in lines[1:1 + n]:
         fields = line.split()
         names.append(fields[0])
-        rows.append([float(v) for v in fields[1:]])
+        rows.append([number(v) for v in fields[1:]])
     return names, rows
+
+
+def number(text):
+    """a matrix entry: real, or complex as '1.8e-10-9.9e-12j' for complex permittivities"""
+    value = complex(text)
+    return value.real if value.imag == 0 else value
 
 
 def relative_difference(a, b):
@@ -81,19 +104,19 @@ def check_matrix(rows, geometry, tolerance):
         return ["expected a %d x %d matrix, got %d rows" % (geometry.conductors, geometry.conductors, n)]
     for i in range(n):
         for j in range(n):
-            if not math.isfinite(rows[i][j]):
+            if not cmath.isfinite(rows[i][j]):
                 errors.append("C%d%d is %r" % (i + 1, j + 1, rows[i][j]))
     if errors:
         return errors
     for i in range(n):
-        if rows[i][i] <= 0:
+        if rows[i][i].real <= 0:
             errors.append("C%d%d = %g is not positive" % (i + 1, i + 1, rows[i][i]))
-        if sum(rows[i]) < -tolerance * rows[i][i]:
-            errors.append("row %d sums to %g, below zero" % (i + 1, sum(rows[i])))
+        if sum(rows[i]).real < -tolerance * rows[i][i].real:
+            errors.append("row %d sums to %s, below zero" % (i + 1, sum(rows[i])))
         for j in range(n):
             if i == j:
                 continue
-            if rows[i][j] >= 0:
+            if rows[i][j].real >= 0:
                 errors.append("C%d%d = %g is not negative" % (i + 1, j + 1, rows[i][j]))
             if j > i and relative_difference(rows[i][j], rows[j][i]) > tolerance:
                 errors.append("C%d%d = %g and C%d%d = %g differ by more than %g"
@@ -101,8 +124,8 @@ def check_matrix(rows, geometry, tolerance):
     for (i, j), expected in geometry.analytic.items():
         obtained = rows[i - 1][j - 1]
         if relative_difference(obtained, expected) > tolerance:
-            errors.append("C%d%d = %g, analytic %g (%+.2f %%)"
-                          % (i, j, obtained, expected, 100.0 * (obtained / expected - 1.0)))
+            errors.append("C%d%d = %s, analytic %s (%.2f %% off)"
+                          % (i, j, obtained, expected, 100.0 * relative_difference(obtained, expected)))
     for (i, j), (k, l) in geometry.equal_entries:
         if relative_difference(rows[i - 1][j - 1], rows[k - 1][l - 1]) > tolerance:
             errors.append("C%d%d = %g and C%d%d = %g should be equal"
@@ -140,8 +163,90 @@ def check_run(command, returncode, output, geometry, tolerance, exit_code=0, no_
         errors += check_matrix(rows, geometry, tolerance)
     print(" ".join(command))
     for name, row in zip(names or [], rows):
-        print("%-12s %s" % (name, " ".join("%.6g" % v for v in row)))
+        print("%-12s %s" % (name, " ".join("%.6g" % v if isinstance(v, float) else str(v) for v in row)))
     return rows, errors
+
+
+def panel_files(list_file):
+    """the panel files a list file names in its 'C' lines, in their order"""
+    directory = os.path.dirname(list_file)
+    with open(list_file) as f:
+        return [os.path.join(directory, line.split()[1]) for line in f if line.startswith("C ")]
+
+
+def read_panels(path):
+    """(vertices, value after them) of the T and Q panels of a panel file"""
+    panels = []
+    with open(path) as f:
+        for line in f:
+            fields = line.split()
+            if fields and fields[0] in ("T", "Q"):
+                corners = 3 if fields[0] == "T" else 4
+                values = [float(v) for v in fields[2:]]
+                vertices = [values[3 * k:3 * k + 3] for k in range(corners)]
+                rest = values[3 * corners:]
+                panels.append((vertices, rest[0] if len(rest) == 1 else None))
+    return panels
+
+
+def area(vertices):
+    total = 0.0
+    for k in range(1, len(vertices) - 1):
+        u = [vertices[k][m] - vertices[0][m] for m in range(3)]
+        w = [vertices[k + 1][m] - vertices[0][m] for m in range(3)]
+        total += 0.5 * math.sqrt((u[1] * w[2] - u[2] * w[1]) ** 2 + (u[2] * w[0] - u[0] * w[2]) ** 2
+                                 + (u[0] * w[1] - u[1] * w[0]) ** 2)
+    return total
+
+
+def check_output_files(list_file, output, names, rows):
+    """errors in the files of -o (refined geometry), -e (matrix) and -c (charge densities)"""
+    errors = []
+    base = os.path.splitext(list_file)[0]
+    n = len(rows)
+
+    refined = re.findall(r"Number of panels after refinement: (\d+)", output)
+    refined_file = base + "_ref.lst"
+    if not os.path.exists(refined_file):
+        errors.append("-o: no %s" % os.path.basename(refined_file))
+    else:
+        count = sum(len(read_panels(f)) for f in panel_files(refined_file))
+        if not refined or count != int(refined[-1]):
+            errors.append("-o: %d panels in %s, %s after refinement"
+                          % (count, os.path.basename(refined_file), refined[-1] if refined else "?"))
+
+    matrix_file = base + ".csv"
+    if not os.path.exists(matrix_file):
+        errors.append("-e: no %s" % os.path.basename(matrix_file))
+    else:
+        with open(matrix_file) as f:
+            written = [[float(v) for v in line.split(",")] for line in f if line.strip()]
+        if len(written) != n or any(len(r) != n for r in written):
+            errors.append("-e: %s is not a %d x %d matrix" % (os.path.basename(matrix_file), n, n))
+        else:
+            for i in range(n):
+                for j in range(n):
+                    if relative_difference(written[i][j], rows[i][j]) > OUTPUT_TOLERANCE:
+                        errors.append("-e: C%d%d = %g in the file, %g printed"
+                                      % (i + 1, j + 1, written[i][j], rows[i][j]))
+
+    # FasterCap prints one excitation per row: with conductor i at 1 V, the charge on conductor
+    # j is Cij; <base>_<conductor i>.lst names the panel files of all conductors in their order
+    for i, name in enumerate(names):
+        charge_file = "%s_%s.lst" % (base, name)
+        if not os.path.exists(charge_file):
+            errors.append("-c: no %s" % os.path.basename(charge_file))
+            continue
+        files = panel_files(charge_file)
+        if len(files) != n:
+            errors.append("-c: %s names %d conductors" % (os.path.basename(charge_file), len(files)))
+            continue
+        for j, path in enumerate(files):
+            charge = sum(area(vertices) * density for vertices, density in read_panels(path))
+            if abs(charge - rows[i][j]) > OUTPUT_TOLERANCE * rows[i][i]:
+                errors.append("-c: charge %g on conductor %d with %d at 1 V, C%d%d = %g"
+                              % (charge, j + 1, i + 1, i + 1, j + 1, rows[i][j]))
+    return errors
 
 
 def out_of_core_ratio(fastercap, list_file, options):
@@ -211,6 +316,12 @@ def main():
                         help="FasterCap must stop without a capacitance matrix")
     parser.add_argument("--reference", choices=sorted(geometries.GEOMETRIES),
                         help="geometry of the same panels, which must give the same matrix")
+    parser.add_argument("--names", help="the conductor names, comma-separated")
+    parser.add_argument("--same-as", help="other FasterCap options that must give the same matrix")
+    parser.add_argument("--dump-input", action="store_true",
+                        help="dump the input geometry (-oi), which must give the same matrix")
+    parser.add_argument("--output-files", action="store_true",
+                        help="write refined geometry, matrix and charges (-o -e -c) and check them")
     parser.add_argument("fastercap_args", nargs=argparse.REMAINDER,
                         help="FasterCap options after --, e.g. -- -a0.01")
     args = parser.parse_args()
@@ -229,9 +340,48 @@ def main():
                                                    args.workdir)
         return report(errors, output)
 
-    command, returncode, output = run(args.fastercap, list_file, fastercap_args)
+    output_options = ["-o", "-e", "-c"] if args.output_files else []
+    command, returncode, output = run(args.fastercap, list_file, fastercap_args + output_options)
     rows, errors = check_run(command, returncode, output, geometry, args.tolerance,
                              args.exit_code, args.no_matrix)
+
+    if args.names and not errors:
+        names, _ = parse_last_matrix(output)
+        if names != args.names.split(","):
+            errors.append("conductors %s, expected %s" % (",".join(names), args.names))
+
+    if args.same_as is not None and not errors:
+        command, returncode, same_output = run(args.fastercap, list_file, args.same_as.split())
+        same_rows, same_errors = check_run(command, returncode, same_output, geometry, args.tolerance)
+        errors += ["%s: %s" % (args.same_as, e) for e in same_errors]
+        if not same_errors:
+            for i, (row, same_row) in enumerate(zip(rows, same_rows)):
+                for j, (value, same_value) in enumerate(zip(row, same_row)):
+                    if relative_difference(value, same_value) > REFERENCE_TOLERANCE:
+                        errors.append("C%d%d = %s, %s gives %s" % (i + 1, j + 1, value, args.same_as, same_value))
+
+    if args.output_files and not errors:
+        names, _ = parse_last_matrix(output)
+        errors += check_output_files(list_file, output, names, rows)
+
+    if args.dump_input and not errors:
+        command, returncode, dump_output = run(args.fastercap, list_file, fastercap_args + ["-oi"])
+        dump_file = os.path.splitext(list_file)[0] + "_dump.lst"
+        if returncode != 0 or parse_last_matrix(dump_output)[0] is not None:
+            errors.append("-oi: exit code %s, expected 0 without a matrix" % returncode)
+        elif not os.path.exists(dump_file):
+            errors.append("-oi: no %s" % os.path.basename(dump_file))
+        else:
+            command, returncode, dump_output = run(args.fastercap, dump_file, fastercap_args)
+            dump_rows, dump_errors = check_run(command, returncode, dump_output, geometry,
+                                               args.tolerance)
+            errors += ["dump: " + e for e in dump_errors]
+            if not dump_errors:
+                for i, (row, dump_row) in enumerate(zip(rows, dump_rows)):
+                    for j, (value, dump_value) in enumerate(zip(row, dump_row)):
+                        if relative_difference(value, dump_value) > REFERENCE_TOLERANCE:
+                            errors.append("dump: C%d%d = %g, input gives %g"
+                                          % (i + 1, j + 1, dump_value, value))
 
     if args.out_of_core and not errors:
         ratio, error = out_of_core_ratio(args.fastercap, list_file, fastercap_args)
