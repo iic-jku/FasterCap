@@ -5261,9 +5261,9 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
                                        qvertex[3].x, qvertex[3].y, qvertex[3].z);
                                 ErrMsg("         distance of vertex #%d from the supporting plane is %g against max tolerance of %g\n", i+1, fabs(dist), AUTOPANEL_EPS);
                                 ErrMsg("         panel definition found at line %d of the input file \"%s\"\n", linenum, fileinname);
-                                is_planar = false;
-                                break;
                             }
+                            is_planar = false;
+                            break;
                         }
                     }
 
