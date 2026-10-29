@@ -188,6 +188,77 @@ COATED_SPHERE_C = FOUR_PI_EPS0 / ((1.0 / RADIUS - 1.0 / COAT_RADIUS) / COAT_PERM
                                   + 1.0 / COAT_RADIUS)
 
 
+def write_coated_sphere_local_reference(directory):
+    """The coated sphere with a reference point outside each coat panel, as klayout-pex writes them."""
+    _write_panels(os.path.join(directory, "sphere.txt"), "sphere", icosphere_panels("s", RADIUS, 3))
+    with open(os.path.join(directory, "coat.txt"), "w") as f:
+        f.write("0 coat, reference points outside\n")
+        for _, name, vertices in icosphere_panels("d", COAT_RADIUS, 3):
+            outside = [1.1 * sum(v[k] for v in vertices) / 3.0 for k in range(3)]
+            f.write("T %s %s\n" % (name, _fmt([c for v in vertices for c in v] + outside)))
+    path = os.path.join(directory, "coated_sphere_local_reference.lst")
+    # the panels' reference points are on the side of the first permittivity, the vacuum
+    _write_list(path, ["C sphere.txt %g 0 0 0" % COAT_PERMITTIVITY,
+                       "D coat.txt 1.0 %g 0 0 0 0 0 0" % COAT_PERMITTIVITY])
+    return path
+
+
+def write_coated_sphere_lossy(directory):
+    """The coated sphere with a lossy coat, LOSSY_PERMITTIVITY written as FasterCap reads it."""
+    write_coated_sphere(directory)
+    permittivity = "%g-j%g" % (LOSSY_PERMITTIVITY.real, -LOSSY_PERMITTIVITY.imag)
+    path = os.path.join(directory, "coated_sphere_lossy.lst")
+    _write_list(path, ["C sphere.txt %s 0 0 0" % permittivity,
+                       "D coat.txt 1.0 %s 0 0 0 0 0 0 -" % permittivity])
+    return path
+
+
+LOSSY_PERMITTIVITY = 4.0 - 1.0j
+COATED_SPHERE_LOSSY_C = FOUR_PI_EPS0 / ((1.0 / RADIUS - 1.0 / COAT_RADIUS) / LOSSY_PERMITTIVITY
+                                        + 1.0 / COAT_RADIUS)
+
+
+def write_three_cubes_single_file(directory):
+    """The three cubes in one input file, the cube as an internal 'File' section."""
+    path = os.path.join(directory, "three_cubes_single_file.lst")
+    pitch = SIDE + GAP
+    with open(path, "w") as f:
+        f.write("* three cubes, one file\n")
+        f.write("C cube 1.0 0 0 0\nC cube 1.0 %g 0 0\nC cube 1.0 0 %g 0\nEnd\n" % (pitch, pitch))
+        f.write("File cube\n0 cube\n")
+        for kind, name, vertices in cube_panels("c", SIDE):
+            f.write("%s %s %s\n" % (kind, name, _fmt(c for v in vertices for c in v)))
+        f.write("End\n")
+    return path
+
+
+def write_three_cubes_renamed(directory):
+    """The three cubes, their panels' conductor renamed by 'N' from c to box."""
+    _write_panels(os.path.join(directory, "box.txt"), "cube", cube_panels("c", SIDE))
+    with open(os.path.join(directory, "box.txt"), "a") as f:
+        f.write("N c box\n")
+    pitch = SIDE + GAP
+    path = os.path.join(directory, "three_cubes_renamed.lst")
+    _write_list(path, ["C box.txt 1.0 0 0 0",
+                       "C box.txt 1.0 %g 0 0" % pitch,
+                       "C box.txt 1.0 0 %g 0" % pitch])
+    return path
+
+
+def write_two_cubes_named(directory):
+    """The two cubes as conductors a and b in one file, merged by 'N b a'."""
+    pitch = SIDE + GAP
+    second = [(kind, "b", [(x + pitch, y, z) for x, y, z in vertices])
+              for kind, _, vertices in cube_panels("b", SIDE)]
+    _write_panels(os.path.join(directory, "named_cubes.txt"), "cubes a and b",
+                  cube_panels("a", SIDE) + second)
+    with open(os.path.join(directory, "named_cubes.txt"), "a") as f:
+        f.write("N b a\n")
+    path = os.path.join(directory, "two_cubes_named.lst")
+    _write_list(path, ["C named_cubes.txt 1.0 0 0 0"])
+    return path
+
+
 def write_degenerate_triangle(directory):
     """The cube and, beside it, a triangle whose vertices are on a line: no self-potential."""
     panels = cube_panels("c", SIDE) + [("T", "c", [(2, 0, 0), (3, 0, 0), (4, 0, 0)])]
@@ -275,6 +346,11 @@ GEOMETRIES = {
     "concentric_spheres": Geometry(write_concentric_spheres, 2,
                                    concentric_spheres_analytic(INNER_RADIUS, OUTER_RADIUS), []),
     "coated_sphere": Geometry(write_coated_sphere, 1, {(1, 1): COATED_SPHERE_C}, []),
+    "coated_sphere_local_reference": Geometry(write_coated_sphere_local_reference, 1, {(1, 1): COATED_SPHERE_C}, []),
+    "coated_sphere_lossy": Geometry(write_coated_sphere_lossy, 1, {(1, 1): COATED_SPHERE_LOSSY_C}, []),
+    "three_cubes_single_file": Geometry(write_three_cubes_single_file, 3, {}, [((1, 2), (1, 3)), ((2, 2), (3, 3))]),
+    "three_cubes_renamed": Geometry(write_three_cubes_renamed, 3, {}, [((1, 2), (1, 3)), ((2, 2), (3, 3))]),
+    "two_cubes_named": Geometry(write_two_cubes_named, 1, {}, []),
     "degenerate_triangle": Geometry(write_degenerate_triangle, 1, {}, []),
     "patran_dielectric": Geometry(write_patran_dielectric, 1, {}, []),
     "skewed_quad": Geometry(write_skewed_quad, 1, {}, []),

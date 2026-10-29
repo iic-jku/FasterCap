@@ -9,6 +9,9 @@ Checks, for the last matrix printed:
 - symmetry, and row sums not below zero (capacitance to infinity), within the tolerance
 - the analytic values and the entries that are equal by symmetry of the geometry
 
+Complex permittivities give complex entries: their real parts must have the signs above, and
+the differences are relative to the magnitudes.
+
 With --out-of-core, FasterCap runs again out-of-core with blocks of one link chunk, and the
 two matrices must agree.
 
@@ -16,6 +19,10 @@ With --no-matrix, FasterCap must stop without printing a matrix.
 
 With --reference, FasterCap runs again on another geometry made of the same panels, and the
 two matrices must agree.
+
+With --names, the conductors must have the given names.
+
+With --same-as, FasterCap runs again with other options, which must give the same matrix.
 
 With --dump-input, FasterCap writes the input geometry back (-oi), and the dump must give the
 same matrix.
@@ -29,6 +36,7 @@ with FC_USER_BREAK and delete its temporary files.
 """
 
 import argparse
+import cmath
 import math
 import os
 import re
@@ -74,8 +82,14 @@ def parse_last_matrix(output):
     for line in lines[1:1 + n]:
         fields = line.split()
         names.append(fields[0])
-        rows.append([float(v) for v in fields[1:]])
+        rows.append([number(v) for v in fields[1:]])
     return names, rows
+
+
+def number(text):
+    """a matrix entry: real, or complex as '1.8e-10-9.9e-12j' for complex permittivities"""
+    value = complex(text)
+    return value.real if value.imag == 0 else value
 
 
 def relative_difference(a, b):
@@ -90,19 +104,19 @@ def check_matrix(rows, geometry, tolerance):
         return ["expected a %d x %d matrix, got %d rows" % (geometry.conductors, geometry.conductors, n)]
     for i in range(n):
         for j in range(n):
-            if not math.isfinite(rows[i][j]):
+            if not cmath.isfinite(rows[i][j]):
                 errors.append("C%d%d is %r" % (i + 1, j + 1, rows[i][j]))
     if errors:
         return errors
     for i in range(n):
-        if rows[i][i] <= 0:
+        if rows[i][i].real <= 0:
             errors.append("C%d%d = %g is not positive" % (i + 1, i + 1, rows[i][i]))
-        if sum(rows[i]) < -tolerance * rows[i][i]:
-            errors.append("row %d sums to %g, below zero" % (i + 1, sum(rows[i])))
+        if sum(rows[i]).real < -tolerance * rows[i][i].real:
+            errors.append("row %d sums to %s, below zero" % (i + 1, sum(rows[i])))
         for j in range(n):
             if i == j:
                 continue
-            if rows[i][j] >= 0:
+            if rows[i][j].real >= 0:
                 errors.append("C%d%d = %g is not negative" % (i + 1, j + 1, rows[i][j]))
             if j > i and relative_difference(rows[i][j], rows[j][i]) > tolerance:
                 errors.append("C%d%d = %g and C%d%d = %g differ by more than %g"
@@ -110,8 +124,8 @@ def check_matrix(rows, geometry, tolerance):
     for (i, j), expected in geometry.analytic.items():
         obtained = rows[i - 1][j - 1]
         if relative_difference(obtained, expected) > tolerance:
-            errors.append("C%d%d = %g, analytic %g (%+.2f %%)"
-                          % (i, j, obtained, expected, 100.0 * (obtained / expected - 1.0)))
+            errors.append("C%d%d = %s, analytic %s (%.2f %% off)"
+                          % (i, j, obtained, expected, 100.0 * relative_difference(obtained, expected)))
     for (i, j), (k, l) in geometry.equal_entries:
         if relative_difference(rows[i - 1][j - 1], rows[k - 1][l - 1]) > tolerance:
             errors.append("C%d%d = %g and C%d%d = %g should be equal"
@@ -149,7 +163,7 @@ def check_run(command, returncode, output, geometry, tolerance, exit_code=0, no_
         errors += check_matrix(rows, geometry, tolerance)
     print(" ".join(command))
     for name, row in zip(names or [], rows):
-        print("%-12s %s" % (name, " ".join("%.6g" % v for v in row)))
+        print("%-12s %s" % (name, " ".join("%.6g" % v if isinstance(v, float) else str(v) for v in row)))
     return rows, errors
 
 
@@ -302,6 +316,8 @@ def main():
                         help="FasterCap must stop without a capacitance matrix")
     parser.add_argument("--reference", choices=sorted(geometries.GEOMETRIES),
                         help="geometry of the same panels, which must give the same matrix")
+    parser.add_argument("--names", help="the conductor names, comma-separated")
+    parser.add_argument("--same-as", help="other FasterCap options that must give the same matrix")
     parser.add_argument("--dump-input", action="store_true",
                         help="dump the input geometry (-oi), which must give the same matrix")
     parser.add_argument("--output-files", action="store_true",
@@ -328,6 +344,21 @@ def main():
     command, returncode, output = run(args.fastercap, list_file, fastercap_args + output_options)
     rows, errors = check_run(command, returncode, output, geometry, args.tolerance,
                              args.exit_code, args.no_matrix)
+
+    if args.names and not errors:
+        names, _ = parse_last_matrix(output)
+        if names != args.names.split(","):
+            errors.append("conductors %s, expected %s" % (",".join(names), args.names))
+
+    if args.same_as is not None and not errors:
+        command, returncode, same_output = run(args.fastercap, list_file, args.same_as.split())
+        same_rows, same_errors = check_run(command, returncode, same_output, geometry, args.tolerance)
+        errors += ["%s: %s" % (args.same_as, e) for e in same_errors]
+        if not same_errors:
+            for i, (row, same_row) in enumerate(zip(rows, same_rows)):
+                for j, (value, same_value) in enumerate(zip(row, same_row)):
+                    if relative_difference(value, same_value) > REFERENCE_TOLERANCE:
+                        errors.append("C%d%d = %s, %s gives %s" % (i + 1, j + 1, value, args.same_as, same_value))
 
     if args.output_files and not errors:
         names, _ = parse_last_matrix(output)

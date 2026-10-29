@@ -34,10 +34,10 @@ endif()
 
 # fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [INTERRUPT] [NO_MATRIX]
 #                [DUMP_INPUT] [OUTPUT_FILES] [EXIT_CODE <code>] [REFERENCE <geometry>]
-#                <FasterCap options>...)
+#                [NAMES <name,...>] [SAME_AS <other options>] <FasterCap options>...)
 function(fastercap_test name geometry tolerance)
     cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE;INTERRUPT;NO_MATRIX;DUMP_INPUT;OUTPUT_FILES"
-                          "EXIT_CODE;REFERENCE" "")
+                          "EXIT_CODE;REFERENCE;NAMES;SAME_AS" "")
     set(flags)
     if(arg_OUT_OF_CORE)
         list(APPEND flags --out-of-core)
@@ -59,6 +59,12 @@ function(fastercap_test name geometry tolerance)
     endif()
     if(DEFINED arg_REFERENCE)
         list(APPEND flags --reference ${arg_REFERENCE})
+    endif()
+    if(DEFINED arg_NAMES)
+        list(APPEND flags --names ${arg_NAMES})
+    endif()
+    if(DEFINED arg_SAME_AS)
+        list(APPEND flags "--same-as=${arg_SAME_AS}")
     endif()
     add_test(NAME ${name}
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_capacitance.py
@@ -135,3 +141,17 @@ fastercap_test(three_cubes_dump_input three_cubes 0.01 DUMP_INPUT -a0.01)
 # -o, -e and -c write the refined panels, the printed matrix and charge densities that add up
 # to the matrix
 fastercap_test(three_cubes_output_files three_cubes 0.01 OUTPUT_FILES -a0.01)
+# a single input file with the cube as an internal 'File' section: the same panels
+fastercap_test(three_cubes_single_file three_cubes_single_file 0.01 REFERENCE three_cubes -a0.01)
+# 'N' renames the conductor of the cube's panels
+fastercap_test(three_cubes_renamed three_cubes_renamed 0.01 NAMES g1_box,g2_box,g3_box REFERENCE three_cubes -a0.01)
+# 'N' to an existing name merges the two conductors
+fastercap_test(two_cubes_named two_cubes_named 0.01 REFERENCE two_cubes -a0.01)
+# reference points outside each panel of the coat, as klayout-pex writes them, instead of one
+# inside: the same dielectric sides
+fastercap_test(coated_sphere_local_reference coated_sphere_local_reference 0.05 REFERENCE coated_sphere -a0.01)
+# lossy coat (er 4-j1): 1.6 % from the analytic complex value, of which 0.8 % in the imaginary
+# part, as the lossless coat gives 2.5 % at -a0.01
+fastercap_test(coated_sphere_lossy coated_sphere_lossy 0.05 -a0.01)
+# -r, -i and -v only print more: the same matrix
+fastercap_test(three_cubes_logging three_cubes 0.01 SAME_AS -a0.01 -a0.01 -r -i -v)
