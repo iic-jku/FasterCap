@@ -114,11 +114,14 @@ include("./Solver/CMakeLists.txt")
 #add_subdirectory(Solver)
 #set (EXTRA_LIBS ${EXTRA_LIBS} Solver)
 
+# the solver, compiled once for FasterCap and for the unit tests in tests/
+add_library(FasterCapSolver OBJECT ${FasterCap_Sources} FasterCapGlobal.cpp FasterCapGlobal.h)
+target_compile_options(FasterCapSolver PUBLIC ${FASTFIELDSOLVERS_COMPILE_OPTIONS})
+target_link_libraries(FasterCapSolver PUBLIC ${EXTRA_LIBS} ${WXWIDGETS_LIBS} ${EIGEN_LIBS})
+
 set(FastFieldSolvers_Sources ${FastFieldSolvers_Sources}
     FasterCapConsole.cpp
     FasterCapConsole.h
-    FasterCapGlobal.cpp
-    FasterCapGlobal.h
     test.cpp
     test.h)
 
@@ -144,10 +147,7 @@ if(${FASTFIELDSOLVERS_HEADLESS} MATCHES OFF)
     endif()
 endif()
 
-add_executable (FasterCap ${FastFieldSolvers_Sources} ${FasterCap_Sources})
-
-# Specify compile options to use when compiling a given target.
-target_compile_options(FasterCap PUBLIC ${FASTFIELDSOLVERS_COMPILE_OPTIONS})
-target_link_libraries(FasterCap ${EXTRA_LIBS} ${WXWIDGETS_LIBS} ${EIGEN_LIBS})
+add_executable (FasterCap ${FastFieldSolvers_Sources})
+target_link_libraries(FasterCap FasterCapSolver)
 
 add_subdirectory(tests)
