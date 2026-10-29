@@ -33,7 +33,8 @@
   `cmake-openmp-fix`, `out-of-core-unix-support`, `blas-support`) stay based on
   `upstream/master`: fix them with new commits, never by rewriting them (the PRs show the
   history), then open a PR from the branch into `master`.
-- `master-backup-<date>` branches keep earlier histories. Branches are never deleted.
+- A branch is deleted once its PR is merged, on GitHub and locally. The branches of open
+  upstream PRs stay, and so do the `master-backup-<date>` branches with earlier histories.
 
 ## Scope
 
