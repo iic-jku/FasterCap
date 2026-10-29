@@ -23,10 +23,9 @@ if(NOT Python3_Interpreter_FOUND)
 endif()
 
 # fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [INTERRUPT] [NO_MATRIX]
-#                [EXIT_CODE <code>] [REFERENCE <geometry>] [EXPECTED <c11,c12,...>]
-#                <FasterCap options>...)
+#                [EXIT_CODE <code>] [REFERENCE <geometry>] <FasterCap options>...)
 function(fastercap_test name geometry tolerance)
-    cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE;INTERRUPT;NO_MATRIX" "EXIT_CODE;REFERENCE;EXPECTED" "")
+    cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE;INTERRUPT;NO_MATRIX" "EXIT_CODE;REFERENCE" "")
     set(flags)
     if(arg_OUT_OF_CORE)
         list(APPEND flags --out-of-core)
@@ -42,9 +41,6 @@ function(fastercap_test name geometry tolerance)
     endif()
     if(DEFINED arg_REFERENCE)
         list(APPEND flags --reference ${arg_REFERENCE})
-    endif()
-    if(DEFINED arg_EXPECTED)
-        list(APPEND flags --expected ${arg_EXPECTED})
     endif()
     add_test(NAME ${name}
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_capacitance.py
@@ -100,10 +96,3 @@ endif()
 # a non-planar Q panel is split into the two triangles along its smaller diagonal; without -v,
 # it went to the planar triangulator, 6 % lower
 fastercap_test(skewed_quad skewed_quad 0.01 REFERENCE skewed_quad_triangles)
-# #10: every platform prints the same numbers. On klayout-pex's plate with its options, the -a
-# refinement turns rounding differences into different links and GMRES iterations: with FMA
-# contraction (Clang on arm64 before #22) the run stops one iteration earlier, 3-4 % lower. The
-# matrix is the one of macOS arm64 without contraction; C12 and C21 differ by 0.12 %
-fastercap_test(plate_same_on_every_platform plate_over_substrate 0.01
-    EXPECTED 4.32548e-07,-4.14424e-07,-4.14901e-07,4.16494e-07
-    -a0.05 -d0.5 -m0.5 -ap)

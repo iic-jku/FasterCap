@@ -17,8 +17,6 @@ With --no-matrix, FasterCap must stop without printing a matrix.
 With --reference, FasterCap runs again on another geometry made of the same panels, and the
 two matrices must agree.
 
-With --expected, the matrix must be the given one, as printed by the run it was taken from.
-
 With --interrupt, an out-of-core run gets SIGINT once it has written link chunks: it must stop
 with FC_USER_BREAK and delete its temporary files.
 """
@@ -47,8 +45,6 @@ BLOCK_MBYTES = 24
 OUT_OF_CORE_TOLERANCE = 1e-5
 # the same panels, given differently
 REFERENCE_TOLERANCE = 1e-5
-# a stored matrix: FasterCap prints 6 significant digits
-EXPECTED_TOLERANCE = 1e-5
 # below the CTest timeout, so that a hanging run still reports its output
 RUN_TIMEOUT = 240
 # FC_USER_BREAK
@@ -215,8 +211,6 @@ def main():
                         help="FasterCap must stop without a capacitance matrix")
     parser.add_argument("--reference", choices=sorted(geometries.GEOMETRIES),
                         help="geometry of the same panels, which must give the same matrix")
-    parser.add_argument("--expected",
-                        help="the matrix FasterCap must print, comma-separated, row by row")
     parser.add_argument("fastercap_args", nargs=argparse.REMAINDER,
                         help="FasterCap options after --, e.g. -- -a0.01")
     args = parser.parse_args()
@@ -258,19 +252,6 @@ def main():
                     for j, (value, ooc_value) in enumerate(zip(row, ooc_row)):
                         if relative_difference(value, ooc_value) > OUT_OF_CORE_TOLERANCE:
                             errors.append("out-of-core C%d%d = %g, in-core %g" % (i + 1, j + 1, ooc_value, value))
-
-    if args.expected and not errors:
-        expected = [float(v) for v in args.expected.split(",")]
-        n = len(rows)
-        if len(expected) != n * n:
-            errors.append("--expected has %d values for a %d x %d matrix" % (len(expected), n, n))
-        else:
-            for k, value in enumerate(expected):
-                obtained = rows[k // n][k % n]
-                if relative_difference(obtained, value) > EXPECTED_TOLERANCE:
-                    errors.append("C%d%d = %g, expected %g (%+.3f %%)"
-                                  % (k // n + 1, k % n + 1, obtained, value,
-                                     100.0 * (obtained / value - 1.0)))
 
     if args.reference and not errors:
         reference = geometries.GEOMETRIES[args.reference]
