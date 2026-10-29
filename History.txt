@@ -4,6 +4,19 @@ Copyright (c) 2019
 FastFieldSolvers S.R.L.  http://www.fastfieldsolvers.com
 ==================
 
+Version 6.2.0, 2026/10/29
+- Fixed dielectric interfaces meshed too coarsely near super panels, which made results up to 21 % high in 3D and 24 % in 2D; results with dielectrics change
+- Exit code 75 when the last GMRES solve does not converge (the matrix is still printed), 65 for NaN or infinite entries (without the matrix)
+- PATRAN neutral files and self-intersecting 'Q' panels stop with exit code 74 instead of giving NaN or crashing
+- Non-planar 'Q' panels are split into two triangles also without '-v'
+- Built without floating-point contraction (FMA): arm64 results with '-a' change
+- Ctrl-C and SIGTERM stop a console run like the GUI stop button, deleting the out-of-core files
+- '-bv' prints only the version also in headless builds
+- The out-of-core log prints percentages below 1 %
+- Removed the undocumented options '-s', '-kc', '-km' and '-ph', which had no effect or hung; '-pn' is documented
+- The GUI builds with wxWidgets 3.3 and finds its help next to the executable
+- Unit tests of the potential integrals and of the triangulation, more regression tests
+
 Version 6.1.1, 2026/10/29
 - Release assets for Linux and Windows no longer wait for a macOS runner (6.1.0 has none)
 
