@@ -99,3 +99,7 @@ fastercap_test(skewed_quad skewed_quad 0.01 REFERENCE skewed_quad_triangles)
 # a self-intersecting Q panel: exit code 74 (FC_FILE_ERROR) naming its line; its triangulation
 # used freed memory and crashed
 fastercap_test(bowtie_quad bowtie_quad 0 NO_MATRIX EXIT_CODE 74)
+# 2D coaxial cable with a dielectric coat (er 10): links between dielectric segments and super
+# segments next to them made it 6.7 % high. The polygons of 256 segments are 0.01 % below the
+# circles; -a0.01 gives +0.24 %, +1.1 % with the 3D distance factor of 2
+fastercap_test(coated_coax coated_coax 0.01 -a0.01)

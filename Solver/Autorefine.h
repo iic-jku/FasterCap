@@ -85,8 +85,16 @@ using namespace std;
 //    if their children can interact directly as well
 #define AUTOREFINE_REF_SUPERPANEL_DIST			10.0
 // min distance, relative to the longer side of the two panels, at which two panels
-// can interact directly if any of them is dielectric and any of them has children
+// can interact directly if any of them is dielectric and any of them has children.
+// 2 is the smallest factor at which a sphere in a dielectric shell converges to its analytic
+// value: 1 leaves it 1.4 % high at -m0.003 -d0.3, 4 needs 6.5 times the links. A constant, not
+// a command line option: below the right factor, no -a, -m, -d or -t gives the right result;
+// above it, the extra links only cost time
 #define AUTOREFINE_DIEL_SUPERPANEL_DIST			2.0
+// the same for 2D segments, relative to the longer of the two. The 2D potential decays only
+// logarithmically, so the rule must reach further: on a coax with a dielectric coat (er 10,
+// -a0.01), 2 leaves it 1.1 % high, 4 gives 0.24 % for 0.5 % more links, 8 the same as 4
+#define AUTOREFINE_DIEL_SUPERSEGMENT_DIST		4.0
 
 // hierarchical levels (only two so far, waiting to possibly extend to n,
 // with proper usage of variables, and not static #define)

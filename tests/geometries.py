@@ -1,7 +1,7 @@
-"""Test geometries in the FasterCap 3D input format, with what is known about their matrices.
+"""Test geometries in the FasterCap input formats, with what is known about their matrices.
 
 Each geometry writes its panel files and list file into a directory. Lengths are in
-meters, so the matrices are in farads.
+meters, so the matrices are in farads, and in farads per meter for the 2D ones.
 """
 
 import collections
@@ -86,6 +86,18 @@ INNER_RADIUS = 0.05
 OUTER_RADIUS = 0.1
 COAT_RADIUS = 2.0
 COAT_PERMITTIVITY = 4.0
+# 2D coaxial cable: inner conductor of RADIUS, coat, outer conductor
+COAX_COAT_RADIUS = 1.5
+COAX_OUTER_RADIUS = 2.0
+COAX_PERMITTIVITY = 10.0
+COAX_SEGMENTS = 256
+
+
+def circle_segments(name, radius, count):
+    """Sides of the polygon inscribed in a circle around the origin, as 2D 'S' segments."""
+    points = [(radius * math.cos(2.0 * math.pi * i / count), radius * math.sin(2.0 * math.pi * i / count))
+              for i in range(count + 1)]
+    return [("S", name, [points[i], points[i + 1]]) for i in range(count)]
 
 
 def write_cube(directory):
@@ -210,6 +222,29 @@ def write_bowtie_quad(directory):
     return path
 
 
+def write_coated_coax(directory):
+    """2D coaxial cable whose inner conductor is coated with a dielectric."""
+    _write_panels(os.path.join(directory, "inner.txt"), "inner conductor",
+                  circle_segments("inner", RADIUS, COAX_SEGMENTS))
+    _write_panels(os.path.join(directory, "coat.txt"), "coat",
+                  circle_segments("coat", COAX_COAT_RADIUS, COAX_SEGMENTS))
+    _write_panels(os.path.join(directory, "outer.txt"), "outer conductor",
+                  circle_segments("outer", COAX_OUTER_RADIUS, COAX_SEGMENTS))
+    path = os.path.join(directory, "coated_coax.lst")
+    # "2D" in the first line selects the 2D solver; the reference point, the center, is on the
+    # side of the first permittivity, the coat
+    _write_list(path, ["* 2D coated coax",
+                       "C inner.txt %g 0 0" % COAX_PERMITTIVITY,
+                       "D coat.txt %g 1.0 0 0 0 0" % COAX_PERMITTIVITY,
+                       "C outer.txt 1.0 0 0"])
+    return path
+
+
+# per meter: the coat, 2*pi*eps0*er / ln(b/a), in series with the vacuum, 2*pi*eps0 / ln(c/b)
+COATED_COAX_C = 2.0 * math.pi * EPS0 / (math.log(COAX_COAT_RADIUS / RADIUS) / COAX_PERMITTIVITY
+                                       + math.log(COAX_OUTER_RADIUS / COAX_COAT_RADIUS))
+
+
 GEOMETRIES = {
     "cube": Geometry(write_cube, 1, {(1, 1): CUBE_FACTOR * FOUR_PI_EPS0 * SIDE}, []),
     "three_cubes": Geometry(write_three_cubes, 3, {}, [((1, 2), (1, 3)), ((2, 2), (3, 3))]),
@@ -222,4 +257,6 @@ GEOMETRIES = {
     "skewed_quad": Geometry(write_skewed_quad, 1, {}, []),
     "skewed_quad_triangles": Geometry(write_skewed_quad_triangles, 1, {}, []),
     "bowtie_quad": Geometry(write_bowtie_quad, 1, {}, []),
+    # the 2D solver prints no row for the last conductor, the reference
+    "coated_coax": Geometry(write_coated_coax, 1, {(1, 1): COATED_COAX_C}, []),
 }
