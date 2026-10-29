@@ -222,7 +222,6 @@ protected:
 	int SaveLinks(bool saveAlsoPot = true);
 	int LoadLinks(unsigned long block, bool loadAlsoPot = true);
 	void DumpMemoryInfo();
-	void CopyCharges(CAutoElement *panel);
 	void RecurseIndex(CAutoElement *panel);
 	void DeletePanelsAndConductors();
 	void DeleteLinkArray(unsigned int level);
@@ -249,7 +248,6 @@ protected:
 	void OutputPanelTree(char *condname, CAutoSegment *panel, FILE *fout, int dielIndex = AUTOREFINE_NO_DIEL_INDEX);
     void OutputPanelList(StlAutoCondDeque::iterator itc, FILE *fout, int dielIndex);
     void OutputPanel(char *condname, CAutoPanel *panel, FILE *fout, int dielIndex);
-	int Discretize(CAutoPanel *panel);
 	int DiscretizeSelf(CAutoPanel *panel);
 	int DiscretizeSelf(CAutoSegment *panel);
 	int DiscretizeMutual(CAutoPanel *panel1, CAutoPanel *panel2, bool selfCond);
@@ -284,8 +282,7 @@ protected:
 	unsigned long m_ulLinkChunkNum[AUTOPANEL_MAX_NUM_OF_HIERARCHIES];
 	unsigned long *m_ulUniqueLinkChunkIDs, *m_ulUniquePotChunkIDs;
 	CAutoConductor *m_pCurrentConductor;
-	double m_dMaxSigma, m_dMidSigma, m_dMinSigma;
-	bool m_bInitCharges, m_bPopulateNodeArray;
+	bool m_bPopulateNodeArray;
 	int m_iParseLevel;
 	int m_iGroupNum[AUTOREFINE_MAX_PARSE_LEVEL];
 	CLin_Vector *m_pLocalCondCharge;

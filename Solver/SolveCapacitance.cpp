@@ -288,7 +288,6 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
             start = clock();
 
             // clarify we start from scratch
-            globalVars.m_bRefineCharge = false;
             globalVars.m_bKeepCharge = false;
             globalVars.m_bKeepMesh = false;
             // clean memory (if charges / panels were still allocated after last run,
@@ -482,7 +481,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
             // and are now not used for discretization)
             m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START, globalVars);
 
-            if(globalVars.m_bRefineCharge == false && globalVars.m_bKeepMesh == false) {
+            if(globalVars.m_bKeepMesh == false) {
                 // read input file and build super hierarchy;
                 // will also modify 'globalVars' to report if there is complex permittivity
                 ret = InputFile(&globalVars);
@@ -613,7 +612,6 @@ void CSolveCap::AutoSetPrecondType(unsigned long numOfLinks, long condNum, CAuto
 void CSolveCap::OutputSolveParams(CAutoRefGlobalVars globalVars)
 {
 // debug
-//	LogMsg("Eps (-e): %g, max discr side (-s): %g:\n", globalVars.m_dEps, globalVars.m_dMaxDiscSide);
 //	LogMsg("Eps (-e): %g, mesh refinement (-m): %g, mesh curvature (-mc): %g\n", globalVars.m_dEps, globalVars.m_dMeshEps, globalVars.m_dMeshCurvCoeff);
 
     if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER) {
@@ -644,9 +642,6 @@ void CSolveCap::OutputSolveParams(CAutoRefGlobalVars globalVars)
 
 	LogMsg("GMRES tolerance (-t): %g\n", globalVars.m_dGmresTol);
 
-	if(globalVars.m_bRefineCharge == true) {
-		LogMsg("Refine mesh using charges (-s)\n");
-	}
 	if(globalVars.m_bKeepCharge == true) {
 		LogMsg("Keep charge information (-kc)\n");
 	}
@@ -1348,8 +1343,7 @@ int CSolveCap::Solve(CLin_Matrix *cRe, CLin_Matrix *cIm)
 
 			if(m_clsGlobalVars.m_bOutputCharge == true) {
 				// charges
-				// remark: the using functions (e.g. CAutoRefine::CopyCharges()
-				// and CAutoRefine::OutputPanelTree() ), will divide the charge by the panel area,
+				// remark: the using function CAutoRefine::OutputPanelTree() will divide the charge by the panel area,
 				// to work with charge densities
 				//
 				// update vector dimension
