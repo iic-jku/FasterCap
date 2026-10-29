@@ -74,7 +74,7 @@ protected:
 	void OutputSolveParams(CAutoRefGlobalVars globalVars);
 	void OutputMeshParams(CAutoRefGlobalVars globalVars);
 	void OutputSolvePrecondType(CAutoRefGlobalVars globalVars);
-	void OutputSolveStats(CAutoRefGlobalVars globalVars);
+	void OutputSolveStats();
 	int OutputCapMtx(const CLin_Matrix &matrixRe, const CLin_Matrix &matrixIm, CAutoRefGlobalVars globalVars);
 	int OutputCapMtxToFile(const CLin_Matrix &matrixRe, const CLin_Matrix &matrixIm, CAutoRefGlobalVars globalVars);
     void PrintTime(float solveTime);

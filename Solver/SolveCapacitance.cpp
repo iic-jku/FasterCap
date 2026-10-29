@@ -123,18 +123,6 @@ int CSolveCap::Run(CAutoRefGlobalVars globalVars)
 		globalVars.m_ucPrecondType = AUTOREFINE_PRECOND_SUPER;
 		ErrMsg("Warning: both two-levels preconditioner and Jacobi preconditioner specified, keeping only the two-levels preconditioner\n");
 	}
-	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0 && globalVars.m_dMaxHierPreDiscSide == 0.0) {
-		globalVars.m_dMaxHierPreDiscSide = globalVars.m_dMaxDiscSide;
-		ErrMsg("Warning: no preconditioner side discretization value specified, using %f\n", globalVars.m_dMaxHierPreDiscSide);
-	}
-	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0 && globalVars.m_dHierPreEps == 0.0) {
-		globalVars.m_dHierPreEps = globalVars.m_dEps * 10.0;
-		ErrMsg("Warning: no mutual potential epsilon value specified for hierarchical preconditioner, using %f\n", globalVars.m_dHierPreEps);
-	}
-	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0 && globalVars.m_bRefineCharge == true) {
-		globalVars.m_bRefineCharge = false;
-		ErrMsg("Warning: 'refine mesh using calculated charges (-s)' option is not compatible with hierarchical preconditioner, resetting option to false\n");
-	}
 	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_SUPER) != 0 ) {
 		if(globalVars.m_uiSuperPreDim > SOLVE_MAX_SUPER_PRECOND_NUM) {
 			globalVars.m_uiSuperPreDim = SOLVE_MAX_SUPER_PRECOND_NUM;
@@ -353,7 +341,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
 
             OutputCapMtx(cRe[0], cIm[0], globalVars);
 
-            OutputSolveStats(globalVars);
+            OutputSolveStats();
 
             finish = clock();
             solveTime = (float)(finish - start) / CLOCKS_PER_SEC;
@@ -450,7 +438,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
                 OutputCapMtx(cRe[i], cIm[i], globalVars);
 
                 LogMsg("Weighted Frobenius norm of the difference between capacitance (auto option): %g\n", diff);
-                OutputSolveStats(globalVars);
+                OutputSolveStats();
 
                 finish = clock();
                 solveTime = (float)(finish - start) / CLOCKS_PER_SEC;
@@ -537,7 +525,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
 
             OutputCapMtx(capRe, capIm, globalVars);
 
-            OutputSolveStats(globalVars);
+            OutputSolveStats();
         }
         
         // the result comes from the last Solve()
@@ -690,13 +678,10 @@ void CSolveCap::OutputSolvePrecondType(CAutoRefGlobalVars globalVars)
 	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_SUPER) != 0 ) {
 		LogMsg("Two-levels, two-levels preconditioner dimension (-ps): %d ", globalVars.m_uiSuperPreDim);
 	}
-	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0 ) {
-		LogMsg("Hierarchical, Eps (-phe): %g, max discr side (-phs): %g, tol (-pht): %g ", globalVars.m_dHierPreEps, globalVars.m_dMaxHierPreDiscSide, globalVars.m_dHierPreGmresTol);
-	}
 	LogMsg("\n");
 }
 
-void CSolveCap::OutputSolveStats(CAutoRefGlobalVars globalVars)
+void CSolveCap::OutputSolveStats()
 {
 	g_lPanelsNum = m_clsMulthier.GetPanelNum(AUTOREFINE_HIER_PRE_0_LEVEL);
 	// links # do not consider auto potential calculations. Must add to have the overall number of links.
@@ -708,10 +693,6 @@ void CSolveCap::OutputSolveStats(CAutoRefGlobalVars globalVars)
 	LogMsg("Number of panels after refinement: %lu\n", m_clsMulthier.GetPanelNum(AUTOREFINE_HIER_PRE_0_LEVEL));
 	LogMsg("Number of potential estimates: %lu\n", m_clsMulthier.m_ulNumofpotest);
 	LogMsg("Number of links: %lu (uncompressed %lu, compression ratio is %.1f%%)\n", g_lLinksNum, g_lPanelsNum * g_lPanelsNum, 100.0f - ((float)(g_lLinksNum)) / ((float)(g_lPanelsNum * g_lPanelsNum)) * 100.0);;
-	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0 ) {
-		LogMsg("Number of precond panels: %lu\n", m_clsMulthier.GetPanelNum(AUTOREFINE_HIER_PRE_1_LEVEL));
-		LogMsg("Number of precond links: %lu\n", m_clsMulthier.GetLinksNum(AUTOREFINE_HIER_PRE_1_LEVEL));
-	}
 	LogMsg("Max recursion level: %d\n", m_clsMulthier.m_iMaxLevel);
 	LogMsg("Max Mesh relative refinement value: %g\n", m_clsMulthier.m_dMaxMeshEps);
 
@@ -1011,34 +992,9 @@ int CSolveCap::RefineGeoAndCountLinks()
 
 	m_clsMulthier.SetInteractionLevel(AUTOREFINE_HIER_PRE_0_LEVEL);
 
-	if( (m_clsGlobalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0) {
-
-		// first step of refinement to form the hierarchical super pre-conditioner
-		//
-
-		globalVars.m_dEps = m_clsGlobalVars.m_dHierPreEps;
-		globalVars.m_dMaxDiscSide = m_clsGlobalVars.m_dMaxHierPreDiscSide;
-		globalVars.m_bOutputGeo = false;
-		globalVars.m_bOutputCapMtx = false;
-
-		ret = m_clsMulthier.AutoRefinePanels(globalVars, AUTOREFINE_HIER_PRE_1_LEVEL);
-		ret = m_clsMulthier.AutoRefineLinks(globalVars);
-
-		if(ret !=  FC_NORMAL_END) {
-			return ret;
-		}
-
-		// second step of refinement for actual solution
-		//
-
-		globalVars = m_clsGlobalVars;
-		ret = m_clsMulthier.AutoRefinePanels(globalVars, AUTOREFINE_HIER_PRE_0_LEVEL);
-	}
-	else {
-		// refinement for actual solution
-		globalVars = m_clsGlobalVars;
-		ret = m_clsMulthier.AutoRefinePanels(globalVars, AUTOREFINE_HIER_PRE_0_LEVEL);
-	}
+	// refinement for actual solution
+	globalVars = m_clsGlobalVars;
+	ret = m_clsMulthier.AutoRefinePanels(globalVars, AUTOREFINE_HIER_PRE_0_LEVEL);
 
 	return ret;
 }
@@ -1282,19 +1238,6 @@ int CSolveCap::Solve(CLin_Matrix *cRe, CLin_Matrix *cIm)
 
 				// this is not supported at the moment, also considering complex capacitance
 				ErrMsg("Error: using unsupported preconditioner 'b'!");
-
-				ret = gmresFlexPrecondSFastAll(&potential, &charge, m_clsGlobalVars.m_dGmresTol);
-
-				if(ret !=  FC_NORMAL_END) {
-					return ret;
-				}
-			}
-			// if hierarchical precond, need flex gmres version (upper step, being approximated
-			// through a second gmres iteration, gives different results at each main gmres iteration)
-			else if( (m_clsGlobalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0) {
-
-				// this is not supported at the moment, also considering complex capacitance
-				ErrMsg("Error: using unsupported preconditioner 'h'!");
 
 				ret = gmresFlexPrecondSFastAll(&potential, &charge, m_clsGlobalVars.m_dGmresTol);
 
@@ -1598,119 +1541,6 @@ int CSolveCap::AllocateMemory()
 	// record up to which iteration the arrays have been pre-allocated
 	m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_0_LEVEL] = 0;
 
-	// only in case the user is requesting a hierarchical preconditioner,
-	// pre-allocate matrices for gmres on upper levels of hierarchy
-	if( (m_clsGlobalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0) {
-
-		//
-		// allocate matrices
-		// (note that we use 0-index arrays)
-		//
-
-		// dimension is the same number of elements as in bottom level,
-		// due to the nature of the hierarchical preconditioner (leaf
-		// elements on the diagonal)
-
-		// q and h matrices
-		if(m_pclsGmres1_q == NULL) {
-			// SAFENEW_ARRAY_NOMEM_RET(TYPE, VAR, LEN)
-			SAFENEW_ARRAY_NOMEM_RET(CLin_Vector, m_pclsGmres1_q, SOLVE_GMRES_ITER_MAX+1)
-		}
-		if(m_pclsGmres1_q == NULL) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += (SOLVE_GMRES_ITER_MAX+1) * sizeof(CLin_Vector);
-		// init first and second element
-		ret = m_pclsGmres1_q[0].newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		ret = m_pclsGmres1_q[1].newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-
-		if(m_pclsGmres1_h == NULL) {
-			// SAFENEW_ARRAY_NOMEM_RET(TYPE, VAR, LEN)
-			SAFENEW_ARRAY_NOMEM_RET(CLin_Vector, m_pclsGmres1_h, SOLVE_GMRES_ITER_MAX)
-		}
-		if(m_pclsGmres1_h == NULL) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += SOLVE_GMRES_ITER_MAX * sizeof(CLin_Vector);
-		// init first element
-		ret = m_pclsGmres1_h[0].newsize(2);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += 2 * sizeof(double);
-
-		//
-		// declare vectors (note that we use
-		// 0-index arrays)
-		//
-		// g, v, w, z, y vectors
-		ret = m_clsGmres1_g.newsize(numElems_0+1);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += (numElems_0 + 1) * sizeof(double);
-		ret = m_clsGmres1_v.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		ret = m_clsGmres1_w.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		ret = m_clsGmres1_z.newsize(numElems_0+1);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += (numElems_0 + 1) * sizeof(double);
-		ret = m_clsGmres1_y.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		// c,s vectors
-		ret = m_clsGmres1_c.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		ret = m_clsGmres1_s.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		// r vector
-		ret = m_clsGmres1_r.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-
-		// Pq vector (preconditioned vector)
-		ret = m_clsGmres1_Pq.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		// x0 vector (initial solution vector)
-		ret = m_clsGmres1_x0.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-
-		// record up to which iteration the arrays have been pre-allocated
-		m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_1_LEVEL] = 0;
-	}
 
 
 	if( (m_clsGlobalVars.m_ucPrecondType & AUTOREFINE_PRECOND_SUPER) != 0) {

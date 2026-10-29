@@ -55,14 +55,12 @@ void CAutoRefGlobalVars::Reset()
 	m_sFileIn = "\0";
 	// if not specified, precond type is JACOBI
 	m_ucPrecondType = AUTOREFINE_PRECOND_JACOBI;
-	m_dMaxHierPreDiscSide = 128;
 	m_uiSuperPreDim = 128;
 	m_uiBlockPreSize = 32;
 	m_bDumpResidual = false;
 	m_bDumpTimeMem = false;
 	m_bVerboseOutput = false;
 	m_dGmresTol = 0.01;
-	m_dHierPreGmresTol = 0.5;
 	m_bOutputGeo = false;
 	m_bDumpInputGeo = false;
 	m_cScheme = AUTOREFINE_COLLOCATION;
