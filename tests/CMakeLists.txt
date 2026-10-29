@@ -42,6 +42,9 @@ fastercap_test(three_cubes_default three_cubes 0.01)
 fastercap_test(cube cube 0.01 -a0.001)
 # the inscribed polyhedron of 1280 triangles is 0.3 % below the sphere
 fastercap_test(sphere sphere 0.01 -a0.01)
+# #7: both inscribed polyhedra are about 0.3 % below their spheres, so is the matrix; symmetric
+# within 0.1 %, and row 1 sums to zero (no capacitance to infinity) within 0.1 % of C11
+fastercap_test(concentric_spheres concentric_spheres 0.01 -a0.001)
 # C12 = C13 and C22 = C33 within 0.06 %, the matrix symmetric within 0.06 %
 fastercap_test(three_cubes three_cubes 0.01 -a0.01)
 # Galerkin: C12 and C13 differ by 0.8 %, also at -t1e-4
