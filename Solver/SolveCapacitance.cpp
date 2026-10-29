@@ -289,7 +289,6 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
 
             // clarify we start from scratch
             globalVars.m_bKeepCharge = false;
-            globalVars.m_bKeepMesh = false;
             // clean memory (if charges / panels were still allocated after last run,
             // and are now not used for discretization)
             m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START, globalVars);
@@ -481,13 +480,11 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
             // and are now not used for discretization)
             m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START, globalVars);
 
-            if(globalVars.m_bKeepMesh == false) {
-                // read input file and build super hierarchy;
-                // will also modify 'globalVars' to report if there is complex permittivity
-                ret = InputFile(&globalVars);
-                if(ret != FC_NORMAL_END) {
-                    return ret;
-                }
+            // read input file and build super hierarchy;
+            // will also modify 'globalVars' to report if there is complex permittivity
+            ret = InputFile(&globalVars);
+            if(ret != FC_NORMAL_END) {
+                return ret;
             }
 
             LogMsg("\n");
@@ -644,9 +641,6 @@ void CSolveCap::OutputSolveParams(CAutoRefGlobalVars globalVars)
 
 	if(globalVars.m_bKeepCharge == true) {
 		LogMsg("Keep charge information (-kc)\n");
-	}
-	if(globalVars.m_bKeepMesh == true) {
-		LogMsg("Keep start mesh information from previous run (-km)\n");
 	}
 	LogMsg("Out-of-core free memory to link memory condition (-f): %g\n", globalVars.m_dOutOfCoreRatio);
 	LogMsg("Potential interaction coefficient to mesh refinement ratio (-d): %g\n", globalVars.m_dEpsRatio);

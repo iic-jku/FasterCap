@@ -221,7 +221,7 @@ void CAutoRefine::Clean(int command, CAutoRefGlobalVars globalVars)
 
 	if( (command == AUTOREFINE_DEALLMEM_ALL) ||
 	        (command == AUTOREFINE_DEALLMEM_AT_END && globalVars.m_bKeepCharge == false) ||
-	        (command == AUTOREFINE_DEALLMEM_AT_START && globalVars.m_bKeepMesh == false) ) {
+	        (command == AUTOREFINE_DEALLMEM_AT_START) ) {
 
 		// delete panel tree and conductor list
 		DeletePanelsAndConductors();
@@ -401,67 +401,52 @@ int CAutoRefine::AutoRefinePanels(CAutoRefGlobalVars globalVars, unsigned char i
 	// start timer
 	start = clock();
 
-	if(m_clsGlobalVars.m_bKeepMesh == false) {
+	// init number of panels and nodes at this level
+	m_ulPanelNum[m_ucInteractionLevel] = 0;
+	m_ulNodeNum[m_ucInteractionLevel] = 0;
 
-		// init number of panels and nodes at this level
-		m_ulPanelNum[m_ucInteractionLevel] = 0;
-		m_ulNodeNum[m_ucInteractionLevel] = 0;
+	// create an adaptive mesh, in function of:
+	// 1) curvature of conductors (self) 2) proximity (mutual)
 
-		// create an adaptive mesh, in function of:
-		// 1) curvature of conductors (self) 2) proximity (mutual)
+	// initialize max mesh eps
+	m_dMaxMeshEps = 0.0;
 
-		// initialize max mesh eps
-		m_dMaxMeshEps = 0.0;
-
-		for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); itc1++) {
-			// refine against every other conductor
-			for(itc2 = itc1 + 1; itc2 != m_stlConductors.end(); itc2++) {
-				if(g_bFCContinue == false) {
-					return FC_USER_BREAK;
-				}
-				// refine
-				if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER) {
-					DiscretizeMutual((*itc1)->m_uTopElement.m_pTopPanel, (*itc2)->m_uTopElement.m_pTopPanel, false);
-				}
-				else if(g_ucSolverType == SOLVERGLOBAL_2DSOLVER) {
-					DiscretizeMutual((*itc1)->m_uTopElement.m_pTopSegment, (*itc2)->m_uTopElement.m_pTopSegment, false);
-				}
-				else {
-					ASSERT(false);
-				}
-			}
-		}
-		for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); itc1++) {
+	for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); itc1++) {
+		// refine against every other conductor
+		for(itc2 = itc1 + 1; itc2 != m_stlConductors.end(); itc2++) {
 			if(g_bFCContinue == false) {
 				return FC_USER_BREAK;
 			}
-			// remark: discretize self should be called only AFTER all mutual discretization
-			// has been performed. This is to allow the mutual routines to refine the panels,
-			// in case, so we don't have the case of conductors made of a single panel (e.g.
-			// square gnd plane), not discretized, unless this discretization was not needed
-			// for mutual refinement
-			m_iLevel = 0;
+			// refine
 			if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER) {
-				DiscretizeSelf((*itc1)->m_uTopElement.m_pTopPanel);
+				DiscretizeMutual((*itc1)->m_uTopElement.m_pTopPanel, (*itc2)->m_uTopElement.m_pTopPanel, false);
 			}
 			else if(g_ucSolverType == SOLVERGLOBAL_2DSOLVER) {
-				DiscretizeSelf((*itc1)->m_uTopElement.m_pTopSegment);
+				DiscretizeMutual((*itc1)->m_uTopElement.m_pTopSegment, (*itc2)->m_uTopElement.m_pTopSegment, false);
 			}
 			else {
 				ASSERT(false);
 			}
 		}
 	}
-	else {
-		// scan all conductor groups
-		for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); itc1++) {
-
-			if(g_bFCContinue == false) {
-				return FC_USER_BREAK;
-			}
-
-			// perform panel initializations (to reset required panel parameters)
-			(*itc1)->m_uTopElement.m_pTopPanel->InitElementsTree();
+	for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); itc1++) {
+		if(g_bFCContinue == false) {
+			return FC_USER_BREAK;
+		}
+		// remark: discretize self should be called only AFTER all mutual discretization
+		// has been performed. This is to allow the mutual routines to refine the panels,
+		// in case, so we don't have the case of conductors made of a single panel (e.g.
+		// square gnd plane), not discretized, unless this discretization was not needed
+		// for mutual refinement
+		m_iLevel = 0;
+		if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER) {
+			DiscretizeSelf((*itc1)->m_uTopElement.m_pTopPanel);
+		}
+		else if(g_ucSolverType == SOLVERGLOBAL_2DSOLVER) {
+			DiscretizeSelf((*itc1)->m_uTopElement.m_pTopSegment);
+		}
+		else {
+			ASSERT(false);
 		}
 	}
 

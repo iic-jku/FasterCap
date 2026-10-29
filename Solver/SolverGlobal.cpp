@@ -79,7 +79,6 @@ void CAutoRefGlobalVars::Reset()
 	// trigger operations in the code (watch out: may be used as unsupported options
 	// via automation!)
 	m_bKeepCharge = false;
-	m_bKeepMesh = false;
     // not used in the 'Run' dialog, but globally used
 	m_ucHasCmplxPerm = AUTOREFINE_REAL_PERM;
 	m_bWarnGivenPre = false;
