@@ -272,12 +272,9 @@ bool FasterCapApp::OnInit()
 		// path for storing temporary files - cached binary versions of index and contents files
 		// not automatically deleted on exit. Used to improve help speed
 		//m_clsHelp.SetTempDir(wxT("."));
-		// add zip collection of help files
-		// remark: following lines not needed, seems that without path
-		// the function AddBook() defaults to executable path anyway
-		//wxString exePath = wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath();
-		//helpRet = m_clsHelp.AddBook(wxFileName(exePath, wxT("FasterCapHelp.zip")));
-		helpRet = m_pHelp->AddBook(wxFileName("FasterCapHelp.zip"));
+		// add zip collection of help files, next to the executable as the CHM help above
+		// (a file name without path is relative to the working directory)
+		helpRet = m_pHelp->AddBook(wxFileName(m_strFasterCapPath, wxT("FasterCapHelp.zip")));
 		// other possibilty, if the help files are not zipped
 		//helpRet = m_clsHelp.AddBook(wxFileName("FasterCapHelp/FasterCap.hhp"));
 		if (! helpRet) {
