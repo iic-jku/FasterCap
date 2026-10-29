@@ -15,28 +15,25 @@
   `LinAlgebra` and `Geometry` point to the working checkouts: a build from `FasterCap_MJK`
   itself would use the reference `LinAlgebra`.
 - Remotes use SSH URLs (`git@github.com:…`).
-- The repository stays in ediloren's fork network while PRs to upstream are open, so GitHub
-  proposes `ediloren/FasterCap` as the base of a new PR: pick `iic-jku/FasterCap` `master`
-  (`gh pr create --repo iic-jku/FasterCap --base master`).
+- The repository is standalone, not in ediloren's fork network: new PRs default to
+  `iic-jku/FasterCap` `master`. The open upstream PRs `ediloren/FasterCap#4`–`#7` come from
+  its branches.
 - `klayout-pex` uses the released `.deb`/`.tar.gz` assets: a change of the numbers or of the
   output format is a behavior change for it.
 
 ## Branches
 
-- `master` is `upstream/master` plus merge commits (`--no-ff`) of feature branches only;
-  `master-backup-<date>` branches keep earlier histories. Feature branches are never deleted.
-- Changes offered upstream (`ediloren/FasterCap#4`–`#7`: `wxwidgets-update`,
-  `cmake-openmp-fix`, `out-of-core-unix-support`, `blas-support`) and other upstreamable
-  ones (`hot-loop-optimizations`, `pdf-doc`, and others' fixes such as
-  `auto-refine-non-convergence`, `block-precond-leaf-roots`) live on branches based on
-  `upstream/master`.
-  Fix them with new commits on the branch, never by rewriting it (the PRs show the history),
-  then merge the branch into `master` again.
-- Small fork-only changes (CI, packaging, AGENTS.md, version and `History.txt`, notices) go
-  on `fork-only`, based on `master` (first `git merge --ff-only master` there). A separate
-  branch only for a change that needs its own review, e.g. each bug fix.
-- Tests go on `regression-tests`, based on `master`: every fix gets a test there that fails
-  without it. `master` merges `regression-tests` together with the fixes.
+- Every change to code, CMake files or tests goes issue → branch → PR → `master`: one branch
+  per issue, based on `master`, merged with a merge commit once its CI is green. The PR
+  carries the fix together with its test.
+- CI, packaging, `AGENTS.md`, `README.md` and other docs, `.gitignore`, notices, version
+  and `History.txt`: changes that don't touch the program are committed directly on
+  `master`, without issue or PR.
+- The branches of the open upstream PRs (`ediloren/FasterCap#4`–`#7`: `wxwidgets-update`,
+  `cmake-openmp-fix`, `out-of-core-unix-support`, `blas-support`) stay based on
+  `upstream/master`: fix them with new commits, never by rewriting them (the PRs show the
+  history), then open a PR from the branch into `master`.
+- `master-backup-<date>` branches keep earlier histories. Branches are never deleted.
 
 ## Scope
 
@@ -117,9 +114,10 @@
   plus 1–4 sentences, no Summary/Changes/Testing headings.
 - Propose a PR title with every PR text, in the style of the commit subjects; for several
   commits, name what they have in common rather than repeating the first subject.
-- Every PR for a bug or feature references an issue: `Fixes #N` or `Part of #N`; without an
-  issue, file one first. CI, tooling and developer-docs PRs need none. Upstream issues are
-  written `ediloren/FasterCap#N`.
+- Every PR references its issue: `Fixes #N` or `Part of #N`; without an issue, file one
+  first. Upstream issues are written `ediloren/FasterCap#N`.
+- Martin pushes and opens the PRs: for each finished branch, say whether it is pushed and
+  propose the PR title and text.
 - A PR is ready when its CI is green on its final commits: after each push, check the CI
   and report every red job with its cause.
 - After rewriting a pushed branch, say that it must be pushed before the merge.
