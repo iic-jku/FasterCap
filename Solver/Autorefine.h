@@ -84,6 +84,9 @@ using namespace std;
 // 2. two super panels can interact directly but only
 //    if their children can interact directly as well
 #define AUTOREFINE_REF_SUPERPANEL_DIST			10.0
+// min distance, relative to the longer side of the two panels, at which two panels
+// can interact directly if any of them is dielectric and any of them has children
+#define AUTOREFINE_DIEL_SUPERPANEL_DIST			2.0
 
 // hierarchical levels (only two so far, waiting to possibly extend to n,
 // with proper usage of variables, and not static #define)
