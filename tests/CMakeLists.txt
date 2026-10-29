@@ -15,6 +15,9 @@ if(FASTFIELDSOLVERS_HEADLESS)
     add_executable(test_potential test_potential.cpp)
     target_link_libraries(test_potential FasterCapSolver)
     add_test(NAME potential COMMAND test_potential)
+    add_executable(test_triangulate test_triangulate.cpp)
+    target_link_libraries(test_triangulate FasterCapSolver)
+    add_test(NAME triangulate COMMAND test_triangulate)
 endif()
 
 # -bv prints only the version; headless builds started a run without input file instead
