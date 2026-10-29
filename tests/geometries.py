@@ -36,9 +36,10 @@ def _write_list(path, lines):
         f.write("".join(line + "\n" for line in lines))
 
 
-def cube_panels(name, side):
+def box_panels(name, lower, upper):
+    """The six faces of an axis-parallel box from corner `lower` to corner `upper`."""
     def v(x, y, z):
-        return (x * side, y * side, z * side)
+        return tuple(lo + (hi - lo) * t for lo, hi, t in zip(lower, upper, (x, y, z)))
 
     faces = [
         [v(0, 0, 0), v(1, 0, 0), v(1, 1, 0), v(0, 1, 0)],
@@ -49,6 +50,10 @@ def cube_panels(name, side):
         [v(1, 0, 0), v(1, 1, 0), v(1, 1, 1), v(1, 0, 1)],
     ]
     return [("Q", name, face) for face in faces]
+
+
+def cube_panels(name, side):
+    return box_panels(name, (0, 0, 0), (side, side, side))
 
 
 def icosphere_panels(name, radius, depth):
@@ -201,6 +206,26 @@ def write_skewed_quad_triangles(directory):
     return path
 
 
+def write_plate_over_substrate(directory):
+    """klayout-pex's sky130A plate: 100 x 100 over the substrate, field oxide between them.
+
+    Each box is six Q panels; lengths are klayout-pex's micrometers, so the matrix is 1e6 times
+    the one in farads.
+    """
+    _write_panels(os.path.join(directory, "substrate.txt"), "substrate",
+                  box_panels("substrate", (-9, -9, -0.43), (109, 109, -0.1)))
+    _write_panels(os.path.join(directory, "plate.txt"), "plate",
+                  box_panels("plate", (0, 0, 0.936), (100, 100, 1.036)))
+    _write_panels(os.path.join(directory, "oxide.txt"), "field oxide",
+                  box_panels("oxide", (-9, -9, 0), (109, 109, 0.326)))
+    path = os.path.join(directory, "plate_over_substrate.lst")
+    # oxide (er 4.632) in the 3.9 above it; the reference point, its center, is inside ('-')
+    _write_list(path, ["C substrate.txt 3.9 0 0 0",
+                       "C plate.txt 3.9 0 0 0",
+                       "D oxide.txt 3.9 4.632 0 0 0 50 50 0.163 -"])
+    return path
+
+
 GEOMETRIES = {
     "cube": Geometry(write_cube, 1, {(1, 1): CUBE_FACTOR * FOUR_PI_EPS0 * SIDE}, []),
     "three_cubes": Geometry(write_three_cubes, 3, {}, [((1, 2), (1, 3)), ((2, 2), (3, 3))]),
@@ -212,4 +237,5 @@ GEOMETRIES = {
     "patran_dielectric": Geometry(write_patran_dielectric, 1, {}, []),
     "skewed_quad": Geometry(write_skewed_quad, 1, {}, []),
     "skewed_quad_triangles": Geometry(write_skewed_quad_triangles, 1, {}, []),
+    "plate_over_substrate": Geometry(write_plate_over_substrate, 2, {}, []),
 }
