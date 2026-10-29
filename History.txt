@@ -4,6 +4,9 @@ Copyright (c) 2019
 FastFieldSolvers S.R.L.  http://www.fastfieldsolvers.com
 ==================
 
+Version 6.2.1, 2026/10/29
+- Release assets: on Windows the new unit tests hung without their DLLs, so 6.2.0 was withdrawn before its assets were built
+
 Version 6.2.0, 2026/10/29
 - Fixed dielectric interfaces meshed too coarsely near super panels, which made results up to 21 % high in 3D and 24 % in 2D; results with dielectrics change
 - Exit code 75 when the last GMRES solve does not converge (the matrix is still printed), 65 for NaN or infinite entries (without the matrix)
