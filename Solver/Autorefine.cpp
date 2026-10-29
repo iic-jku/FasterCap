@@ -183,7 +183,6 @@ CAutoRefine::CAutoRefine()
 
 	m_ulUniqueLinkChunkIDs = NULL;
 	m_ulUniquePotChunkIDs = NULL;
-	m_fGlobalCharges = NULL;
 	m_pucDielIndex = NULL;
 	m_pNodes = NULL;
 
@@ -193,7 +192,7 @@ CAutoRefine::CAutoRefine()
 
 CAutoRefine::~CAutoRefine()
 {
-	Clean(AUTOREFINE_DEALLMEM_ALL, m_clsGlobalVars);
+	Clean(AUTOREFINE_DEALLMEM_ALL);
 }
 /*
 // reset the structures to the status after BuildSuperHierarchy()
@@ -212,16 +211,15 @@ void CAutoRefine::CleanOnlyUpToSupHie()
 	}
 }
 */
-void CAutoRefine::Clean(int command, CAutoRefGlobalVars globalVars)
+void CAutoRefine::Clean(int command)
 {
 	unsigned int i;
 	unsigned long totChunksNum, k;
 	wxFileName tmpFileName;
     StlAutoCondDeque::iterator itc;
 
-	if( (command == AUTOREFINE_DEALLMEM_ALL) ||
-	        (command == AUTOREFINE_DEALLMEM_AT_END && globalVars.m_bKeepCharge == false) ||
-	        (command == AUTOREFINE_DEALLMEM_AT_START && globalVars.m_bRefineCharge == false && globalVars.m_bKeepMesh == false) ) {
+	if( (command == AUTOREFINE_DEALLMEM_ALL) || (command == AUTOREFINE_DEALLMEM_AT_END) ||
+	        (command == AUTOREFINE_DEALLMEM_AT_START) ) {
 
 		// delete panel tree and conductor list
 		DeletePanelsAndConductors();
@@ -237,18 +235,6 @@ void CAutoRefine::Clean(int command, CAutoRefGlobalVars globalVars)
 		}
 		g_clsMemUsage.m_ulPanelsMem = 0;
 		g_clsMemUsage.m_ulCondMem = 0;
-	}
-
-	if( (command == AUTOREFINE_DEALLMEM_ALL) ||
-	        (command == AUTOREFINE_DEALLMEM_AT_END && globalVars.m_bKeepCharge == false ) ||
-	        (command == AUTOREFINE_DEALLMEM_AT_START  && globalVars.m_bRefineCharge == false) ||
-	        (command == AUTOREFINE_DEALLMEM_CLEAN_CHARGES)) {
-
-		if(m_fGlobalCharges != NULL) {
-			delete m_fGlobalCharges;
-			m_fGlobalCharges = NULL;
-		}
-		g_clsMemUsage.m_ulChargesMem = 0;
 	}
 
 	// delete self-potential array
@@ -354,7 +340,6 @@ void CAutoRefine::DeleteLinkArray(unsigned int level)
 //
 int CAutoRefine::AutoRefinePanels(CAutoRefGlobalVars globalVars, unsigned char interactLevel)
 {
-	unsigned long i;
 	int ret;
 	StlAutoCondDeque::iterator itc1, itc2;
 	clock_t start, finish;
@@ -401,129 +386,57 @@ int CAutoRefine::AutoRefinePanels(CAutoRefGlobalVars globalVars, unsigned char i
 	// start timer
 	start = clock();
 
-	// if refinement is going to be based on the charge computed in
-	// a previous run, copy the charge densitied into the panels,
-	// while resetting the link counters for each panel
-	if(m_clsGlobalVars.m_bRefineCharge == true) {
-		// signal to init charge vars
-		m_bInitCharges = true;
+	// init number of panels and nodes at this level
+	m_ulPanelNum[m_ucInteractionLevel] = 0;
+	m_ulNodeNum[m_ucInteractionLevel] = 0;
 
-		m_ulCountPanelNum = 0;
-		// scan all conductor groups
-		for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); itc1++) {
+	// create an adaptive mesh, in function of:
+	// 1) curvature of conductors (self) 2) proximity (mutual)
 
+	// initialize max mesh eps
+	m_dMaxMeshEps = 0.0;
+
+	for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); itc1++) {
+		// refine against every other conductor
+		for(itc2 = itc1 + 1; itc2 != m_stlConductors.end(); itc2++) {
 			if(g_bFCContinue == false) {
 				return FC_USER_BREAK;
 			}
-
-			// copy charges into leaf panels
-			CopyCharges((*itc1)->m_uTopElement.m_pTopPanel);
-		}
-
-		// refine only the panels whose charge density is in the last 'x' percentile
-		m_dMidSigma = (m_dMaxSigma - m_dMinSigma) * 0.5 + m_dMinSigma;
-	}
-
-	if(m_clsGlobalVars.m_bKeepMesh == false) {
-
-		// init number of panels and nodes at this level
-		m_ulPanelNum[m_ucInteractionLevel] = 0;
-		m_ulNodeNum[m_ucInteractionLevel] = 0;
-
-		// if the user wants to refine the geometry based on the charge information
-		if(m_clsGlobalVars.m_bRefineCharge == true) {
-
-			// scan all conductor groups
-			for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); itc1++) {
-
-				if(g_bFCContinue == false) {
-					return FC_USER_BREAK;
-				}
-
-				// Discretize geometry
-				ret = Discretize((*itc1)->m_uTopElement.m_pTopPanel);
-				if(ret !=  FC_NORMAL_END) {
-					return ret;
-				}
+			// refine
+			if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER) {
+				DiscretizeMutual((*itc1)->m_uTopElement.m_pTopPanel, (*itc2)->m_uTopElement.m_pTopPanel, false);
 			}
+			else if(g_ucSolverType == SOLVERGLOBAL_2DSOLVER) {
+				DiscretizeMutual((*itc1)->m_uTopElement.m_pTopSegment, (*itc2)->m_uTopElement.m_pTopSegment, false);
+			}
+			else {
+				ASSERT(false);
+			}
+		}
+	}
+	for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); itc1++) {
+		if(g_bFCContinue == false) {
+			return FC_USER_BREAK;
+		}
+		// remark: discretize self should be called only AFTER all mutual discretization
+		// has been performed. This is to allow the mutual routines to refine the panels,
+		// in case, so we don't have the case of conductors made of a single panel (e.g.
+		// square gnd plane), not discretized, unless this discretization was not needed
+		// for mutual refinement
+		m_iLevel = 0;
+		if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER) {
+			DiscretizeSelf((*itc1)->m_uTopElement.m_pTopPanel);
+		}
+		else if(g_ucSolverType == SOLVERGLOBAL_2DSOLVER) {
+			DiscretizeSelf((*itc1)->m_uTopElement.m_pTopSegment);
 		}
 		else {
-			// otherwise create an adaptive mesh, in function of:
-			// 1) curvature of conductors (self) 2) proximity (mutual)
-
-			// initialize max mesh eps
-			m_dMaxMeshEps = 0.0;
-
-			for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); itc1++) {
-				// refine against every other conductor
-				for(itc2 = itc1 + 1; itc2 != m_stlConductors.end(); itc2++) {
-					if(g_bFCContinue == false) {
-						return FC_USER_BREAK;
-					}
-					// refine
-					if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER) {
-						DiscretizeMutual((*itc1)->m_uTopElement.m_pTopPanel, (*itc2)->m_uTopElement.m_pTopPanel, false);
-					}
-					else if(g_ucSolverType == SOLVERGLOBAL_2DSOLVER) {
-						DiscretizeMutual((*itc1)->m_uTopElement.m_pTopSegment, (*itc2)->m_uTopElement.m_pTopSegment, false);
-					}
-					else {
-						ASSERT(false);
-					}
-				}
-			}
-			for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); itc1++) {
-				if(g_bFCContinue == false) {
-					return FC_USER_BREAK;
-				}
-				// remark: discretize self should be called only AFTER all mutual discretization
-				// has been performed. This is to allow the mutual routines to refine the panels,
-				// in case, so we don't have the case of conductors made of a single panel (e.g.
-				// square gnd plane), not discretized, unless this discretization was not needed
-				// for mutual refinement
-				m_iLevel = 0;
-				if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER) {
-					DiscretizeSelf((*itc1)->m_uTopElement.m_pTopPanel);
-				}
-				else if(g_ucSolverType == SOLVERGLOBAL_2DSOLVER) {
-					DiscretizeSelf((*itc1)->m_uTopElement.m_pTopSegment);
-				}
-				else {
-					ASSERT(false);
-				}
-			}
+			ASSERT(false);
 		}
 	}
-	else {
-		// scan all conductor groups
-		for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); itc1++) {
-
-			if(g_bFCContinue == false) {
-				return FC_USER_BREAK;
-			}
-
-			// perform panel initializations (to reset required panel parameters)
-			(*itc1)->m_uTopElement.m_pTopPanel->InitElementsTree();
-		}
-	}
-
-	// if global charges array was allocated, clear it (in this point of the code, the array is no more useful:
-	// if required, it should have already been used in Discretize() function)
-	Clean(AUTOREFINE_DEALLMEM_CLEAN_CHARGES, m_clsGlobalVars);
 
 	// allocate nodes array (will be populated in RecurseIndex() called in AutoRefineLinks() )
 	SAFENEW_ARRAY_RET(CAutoElement*, m_pNodes, m_ulNodeNum[m_ucInteractionLevel], g_clsMemUsage.m_ulPanelsMem)
-
-	// allocate array of global charges, used for refinement (if requested, and if on bottom level)
-	if(m_clsGlobalVars.m_bKeepCharge == true && m_ucInteractionLevel == AUTOREFINE_HIER_PRE_0_LEVEL) {
-
-		// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
-		SAFENEW_ARRAY_RET(float, m_fGlobalCharges, m_ulPanelNum[m_ucInteractionLevel], g_clsMemUsage.m_ulChargesMem)
-		// clear the array
-		for(i=0; i<m_ulPanelNum[m_ucInteractionLevel]; i++) {
-			m_fGlobalCharges[i] = 0.0;
-		}
-	}
 
 	// dry-scan all conductor groups to calculate # of links per panel and per supernode,
 	// plus the self-potentials.
@@ -1154,51 +1067,6 @@ void CAutoRefine::DumpMemoryInfo()
 
 }
 
-void CAutoRefine::CopyCharges(CAutoElement *panel)
-{
-	double sigma;
-
-	if(panel->IsLeaf() == true) {
-
-		ASSERT((panel->m_ucType & AUTOPANEL_IS_SUPER_NODE) != AUTOPANEL_IS_SUPER_NODE);
-		ASSERT(m_ulCountPanelNum < m_ulPanelNum[m_ucInteractionLevel]);
-
-		// save charges in panels as charge densities
-
-		// densities
-		sigma = m_fGlobalCharges[m_ulCountPanelNum] / panel->GetDimension();
-// debug
-//		sigma = m_fGlobalCharges[m_ulCountPanelNum];
-//		sigma = m_fGlobalCharges[m_ulCountPanelNum] * panel->GetDimension();
-
-		panel->m_dCharge = sigma;
-		panel->m_dPotential = sigma;
-
-		if(m_bInitCharges == true) {
-			m_dMaxSigma = sigma;
-			m_dMinSigma = sigma;
-			m_bInitCharges = false;
-		}
-		else {
-			// find max and min charges
-			if(sigma > m_dMaxSigma) {
-				m_dMaxSigma = sigma;
-			}
-			if(sigma < m_dMinSigma) {
-				m_dMinSigma = sigma;
-			}
-		}
-
-		// increase panel number
-		m_ulCountPanelNum++;
-	}
-	else {
-		// then call recursively the routine for each child
-		CopyCharges(panel->m_pLeft);
-		CopyCharges(panel->m_pRight);
-	}
-}
-
 int CAutoRefine::ComputeLinks()
 {
 	StlAutoCondDeque::iterator itc1, itc2;
@@ -1532,19 +1400,6 @@ void CAutoRefine::OutputPanelTree(char *condname, CAutoSegment *panel, FILE *fou
 				}
 				fprintf(fout, "  %e\n", (*m_pLocalCondCharge)[panel->m_lIndex[AUTOREFINE_HIER_PRE_0_LEVEL]] / panel->GetDimension());
 			}
-			else if(m_clsGlobalVars.m_bKeepCharge == true) {
-				fprintf(fout, "Q %s  %g %g %g %g %g %g %g %g %g %g %g %g", condname,
-				        panel->m_clsVertex[0].x, panel->m_clsVertex[0].y, 0.0,
-				        panel->m_clsVertex[1].x, panel->m_clsVertex[1].y, 0.0,
-				        panel->m_clsVertex[1].x, panel->m_clsVertex[1].y, AUTOREFINE_2D_ZCOORD,
-				        panel->m_clsVertex[0].x, panel->m_clsVertex[0].y, AUTOREFINE_2D_ZCOORD);
-				if((panel->m_ucType & AUTOPANEL_OUTPERM_ELEMENT_LEVEL) == AUTOPANEL_OUTPERM_ELEMENT_LEVEL) {
-					// local dielectric reference point
-					dielrefpoint = panel->GetCentroid() + panel->GetDielNormal();
-					fprintf(fout, "  %g %g %g", dielrefpoint.x, dielrefpoint.y, AUTOREFINE_2D_ZCOORD / 2.0);
-				}
-				fprintf(fout, "  %e\n", m_fGlobalCharges[panel->m_lIndex[AUTOREFINE_HIER_PRE_0_LEVEL]] / panel->GetDimension());
-			}
 			else {
 				fprintf(fout, "Q %s  %g %g %g %g %g %g %g %g %g %g %g %g", condname,
 				        panel->m_clsVertex[0].x, panel->m_clsVertex[0].y, 0.0,
@@ -1621,9 +1476,6 @@ void CAutoRefine::OutputPanel(char *condname, CAutoPanel *panel, FILE *fout, int
 
         if(m_clsGlobalVars.m_bOutputCharge == true && m_pLocalCondCharge != NULL && m_clsGlobalVars.m_bDumpInputGeo == false) {
             fprintf(fout, "  %e\n", (*m_pLocalCondCharge)[panel->m_lIndex[AUTOREFINE_HIER_PRE_0_LEVEL]] / panel->GetDimension());
-        }
-        else if(m_clsGlobalVars.m_bKeepCharge == true && m_clsGlobalVars.m_bDumpInputGeo == false) {
-            fprintf(fout, "  %e\n", m_fGlobalCharges[panel->m_lIndex[AUTOREFINE_HIER_PRE_0_LEVEL]] / panel->GetDimension());
         }
         else {
             fprintf(fout, "\n");
@@ -2611,98 +2463,6 @@ double CAutoRefine::RecurseMutualPotential(CAutoPanel *panel)
 	return potestim;
 }
 */
-
-// Recursive refinement
-int CAutoRefine::Discretize(CAutoPanel *panel)
-{
-	double rmax;
-	bool discretize;
-	int ret;
-
-	ret = FC_NORMAL_END;
-
-	// increase depth level
-	m_iLevel++;
-
-	// store max recursion level
-	if(m_iLevel > m_iMaxLevel)
-		m_iMaxLevel = m_iLevel;
-
-	// reset link counter
-	panel->m_ulLinkIndexStart[m_ucInteractionLevel] = 0;
-	panel->m_ulLinkIndexEnd[m_ucInteractionLevel] = 0;
-
-	// get max lenght of panel side
-	rmax = panel->GetMaxSideLen();
-
-	if(panel->IsLeaf() == true) {
-
-		// criteria for discretization
-		discretize = false;
-		// if side too large, candidate for discretization
-		if(rmax > m_clsGlobalVars.m_dMaxDiscSide) {
-			if(m_clsGlobalVars.m_bRefineCharge == true) {
-				if(panel->m_dCharge >= m_dMidSigma) {
-					discretize = true;
-				}
-			}
-			else {
-				discretize = true;
-			}
-		}
-
-		// if decided to discretize, subdivide and recurse
-		if(discretize == true) {
-			ret = panel->Subdivide();
-
-			if(ret != FC_NORMAL_END) {
-				return ret;
-			}
-
-			if(m_clsGlobalVars.m_bRefineCharge == true) {
-				// avoid recursive levels of discretization, that could be a problem
-				// when an 'old' large panel falls within the discretization criteria
-				// and therefore gets refined in one shot to the finest level of mesh
-				panel->m_pLeft->m_dCharge = m_dMinSigma;
-				panel->m_pRight->m_dCharge = m_dMinSigma;
-			}
-
-			ret = Discretize((CAutoPanel*)(panel->m_pLeft));
-
-			if(ret != FC_NORMAL_END) {
-				return ret;
-			}
-
-			ret = Discretize((CAutoPanel*)(panel->m_pRight));
-
-			if(ret != FC_NORMAL_END) {
-				return ret;
-			}
-		}
-		else {
-			// increment count of leaf panels
-			m_ulPanelNum[m_ucInteractionLevel]++;
-		}
-	}
-	else {
-		ret = Discretize((CAutoPanel*)(panel->m_pLeft));
-
-		if(ret != FC_NORMAL_END) {
-			return ret;
-		}
-
-		ret = Discretize((CAutoPanel*)(panel->m_pRight));
-
-		if(ret != FC_NORMAL_END) {
-			return ret;
-		}
-	}
-
-	// return to upper level
-	m_iLevel--;
-
-	return ret;
-}
 
 // Recursive refinement
 int CAutoRefine::DiscretizeSelf(CAutoPanel *panel)

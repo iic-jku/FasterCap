@@ -59,7 +59,7 @@ public:
 	int Run(CAutoRefGlobalVars globalVars);
 	int SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin_Matrix &capIm);
 	void CopyCondNames(StlStringList &stringList);
-	void DeallocateMemory(int command, CAutoRefGlobalVars globalVars);
+	void DeallocateMemory(int command);
 	void DeallocatePrecond();
     void PrintRetError(int retErr);
 	    
@@ -74,7 +74,7 @@ protected:
 	void OutputSolveParams(CAutoRefGlobalVars globalVars);
 	void OutputMeshParams(CAutoRefGlobalVars globalVars);
 	void OutputSolvePrecondType(CAutoRefGlobalVars globalVars);
-	void OutputSolveStats(CAutoRefGlobalVars globalVars);
+	void OutputSolveStats();
 	int OutputCapMtx(const CLin_Matrix &matrixRe, const CLin_Matrix &matrixIm, CAutoRefGlobalVars globalVars);
 	int OutputCapMtxToFile(const CLin_Matrix &matrixRe, const CLin_Matrix &matrixIm, CAutoRefGlobalVars globalVars);
     void PrintTime(float solveTime);
@@ -93,7 +93,6 @@ protected:
 	void InvertMatrix(double (*matrix)[SOLVE_MAX_SUPER_PRECOND_NUM], double (*invMatrix)[SOLVE_MAX_SUPER_PRECOND_NUM], unsigned long size);
 	int gmresPrecondSFast_test(CLin_Vector *b, CLin_Vector *x, double gmresTol);
 	int gmresPrecondSFastAll(CLin_Vector *b, CLin_Vector *x, double gmresTol);
-	int gmresPrecondSFastAllUpper(CLin_Vector *b, CLin_Vector *x, double gmresTol, unsigned char precondType);
 	int gmresFlexPrecondSFastAll(CLin_Vector *b, CLin_Vector *x, double gmresTol);
 	int gmresPrecondSFastAllX0(CLin_Vector *b, CLin_Vector *x, CLin_Vector *x0);
 	void ComputePrecondVectFast(CLin_Vector *Pq, CLin_Vector *q, unsigned char precondType);

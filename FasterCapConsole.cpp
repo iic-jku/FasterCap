@@ -132,7 +132,8 @@ int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
 			LogMsg("Usage: %s <input file> [-a<relative error>] [-ap]\n", (const char*)argv[0]);
 			LogMsg("                 [-m<mesh>] [-mc<mesh curvature] [-t<tolerance>]\n");
 			LogMsg("                 [-d<interaction coeff>] [-f<outofcore>] [-g]\n");
-			LogMsg("                 [-pj] [-ps<dimension>] [-o] [-r] [-c] [-i] [-v]\n");
+			LogMsg("                 [-pn] [-pj] [-ps<dimension>]\n");
+			LogMsg("                 [-o] [-oi] [-e] [-r] [-c] [-i] [-v]\n");
 			LogMsg("                 [-b|-b?|-bv]\n");
 			LogMsg("DEFAULT VALUES:\n");
 			LogMsg("  -a:  Automatically calculate settings, stop when\n");
@@ -144,6 +145,7 @@ int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
 			LogMsg("  -d:  Direct potential interaction coefficient to mesh refinement ratio = %g\n", defGlobalVars.m_dEpsRatio);
 			LogMsg("  -f:  Out-Of-Core free memory to link memory condition = %g\n", defGlobalVars.m_dOutOfCoreRatio);
 			LogMsg("  -g:  Use Galerkin scheme\n");
+			LogMsg("  -pn: Use no preconditioner\n");
 			LogMsg("  -pj: Use Jacobi Preconditioner\n");
 			LogMsg("  -ps: Use two-levels preconditioner with dimension = %d\n", defGlobalVars.m_uiSuperPreDim);
 			LogMsg("OPTIONS:\n");
@@ -203,18 +205,9 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 	while(res != 0 && res != EOF && cmderr != true) {
 		if(argStr[0] == '-') {
 
-			// '-s' is maximum side left after discretization
-			if(argStr[1] == 's') {
-				if(sscanf(&(argStr[2]), "%lf", &(globalVars.m_dMaxDiscSide)) != 1) {
-					cmderr = true;
-					//errMsg = wxString::Format(wxT("%s: bad side discretization value '%s'\n"), commandStr, &argStr[2]);
-					errMsg = wxString::Format(wxT("%s: unsupported parameter '%s'\n"), commandStr, argStr);
-				}
-			}
-
 			// '-m' is mesh relative refinement level
 			// '-mc' is the curvature coefficient for gradient meshing near sharp edges
-			else if(argStr[1] == 'm') {
+			if(argStr[1] == 'm') {
 				if(argStr[2] == 'c') {
 					if(sscanf(&(argStr[3]), "%lf", &(globalVars.m_dMeshCurvCoeff)) != 1) {
 						cmderr = true;
@@ -265,27 +258,6 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 						errMsg = wxString::Format(wxT("%s: bad preconditioner dimension '%s'\n"), commandStr, &argStr[3]);
 					}
 				}
-				else if (argStr[2] == 'H' || argStr[2] == 'h') {
-					globalVars.m_ucPrecondType |= AUTOREFINE_PRECOND_HIER;
-					if (argStr[3] == 's') {
-						if(sscanf(&(argStr[4]), "%lf", &(globalVars.m_dMaxHierPreDiscSide)) != 1) {
-							cmderr = true;
-							errMsg = wxString::Format(wxT("%s: bad preconditioner side discretization value '%s'\n"), commandStr, &argStr[4]);
-						}
-					}
-					else if (argStr[3] == 'e') {
-						if(sscanf(&(argStr[4]), "%lf", &(globalVars.m_dHierPreEps)) != 1) {
-							cmderr = true;
-							errMsg = wxString::Format(wxT("%s: bad preconditioner mutual potential epsilon value  '%s'\n"), commandStr, &argStr[4]);
-						}
-					}
-					else if(argStr[1] == 't') {
-						if(sscanf(&(argStr[4]), "%lf", &(globalVars.m_dHierPreGmresTol)) != 1) {
-							cmderr = true;
-							errMsg = wxString::Format(wxT("%s: bad preconditioner GMRES tolerance value '%s'\n"), commandStr, &argStr[4]);
-						}
-					}
-				}
 				else {
 					cmderr = true;
 					errMsg = wxString::Format(wxT("%s: bad preconditioner type '%s'\n"), commandStr, &argStr[2]);
@@ -297,25 +269,6 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
                 globalVars.m_bOutputCharge = true;
 			}
 			
-			// '-kc' is keep charge information after termination
-			else if(argStr[1] == 'k') {
-				if(argStr[2] == 'c') {
-					globalVars.m_bKeepCharge = true;
-				}
-			}
-
-			// '-s' is refine mesh using calculated charges
-			else if(argStr[1] == 's') {
-				globalVars.m_bRefineCharge = true;
-			}
-
-			// '-km' is keep mesh used in previous run
-			else if(argStr[1] == 'k') {
-				if(argStr[2] == 'm') {
-					globalVars.m_bKeepMesh = true;
-				}
-			}
-
 			// '-r' is dump residual at every GMRES step
 			else if(argStr[1] == 'r') {
 				globalVars.m_bDumpResidual = true;

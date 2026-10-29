@@ -55,14 +55,12 @@ void CAutoRefGlobalVars::Reset()
 	m_sFileIn = "\0";
 	// if not specified, precond type is JACOBI
 	m_ucPrecondType = AUTOREFINE_PRECOND_JACOBI;
-	m_dMaxHierPreDiscSide = 128;
 	m_uiSuperPreDim = 128;
 	m_uiBlockPreSize = 32;
 	m_bDumpResidual = false;
 	m_bDumpTimeMem = false;
 	m_bVerboseOutput = false;
 	m_dGmresTol = 0.01;
-	m_dHierPreGmresTol = 0.5;
 	m_bOutputGeo = false;
 	m_bDumpInputGeo = false;
 	m_cScheme = AUTOREFINE_COLLOCATION;
@@ -75,15 +73,8 @@ void CAutoRefGlobalVars::Reset()
 	m_dOutOfCoreRatio = 5.0;
 	m_bOutputCharge = false;
 	m_bOutputCapMtx = false;
-	// not used any more in 'Run' dialog, but calculated offline and used globally
-	m_dMaxDiscSide = 0.1;
-	m_dEps = 0.3 * m_dMaxDiscSide;
-	// not used any more in 'Run' dialog, but must be kept because
-	// trigger operations in the code (watch out: may be used as unsupported options
-	// via automation!)
-	m_bKeepCharge = false;
-	m_bRefineCharge = false;
-	m_bKeepMesh = false;
+	// not used any more in 'Run' dialog, but calculated from -m and -d and used globally
+	m_dEps = m_dEpsRatio * m_dMeshEps;
     // not used in the 'Run' dialog, but globally used
 	m_ucHasCmplxPerm = AUTOREFINE_REAL_PERM;
 	m_bWarnGivenPre = false;

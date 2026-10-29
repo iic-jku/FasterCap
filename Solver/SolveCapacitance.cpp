@@ -79,7 +79,7 @@ CSolveCap::CSolveCap()
 CSolveCap::~CSolveCap()
 {
 	// free memory
-	DeallocateMemory(AUTOREFINE_DEALLMEM_ALL, m_clsGlobalVars);
+	DeallocateMemory(AUTOREFINE_DEALLMEM_ALL);
 
 }
 
@@ -122,18 +122,6 @@ int CSolveCap::Run(CAutoRefGlobalVars globalVars)
 	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_SUPER) != 0 && (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_JACOBI) != 0) {
 		globalVars.m_ucPrecondType = AUTOREFINE_PRECOND_SUPER;
 		ErrMsg("Warning: both two-levels preconditioner and Jacobi preconditioner specified, keeping only the two-levels preconditioner\n");
-	}
-	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0 && globalVars.m_dMaxHierPreDiscSide == 0.0) {
-		globalVars.m_dMaxHierPreDiscSide = globalVars.m_dMaxDiscSide;
-		ErrMsg("Warning: no preconditioner side discretization value specified, using %f\n", globalVars.m_dMaxHierPreDiscSide);
-	}
-	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0 && globalVars.m_dHierPreEps == 0.0) {
-		globalVars.m_dHierPreEps = globalVars.m_dEps * 10.0;
-		ErrMsg("Warning: no mutual potential epsilon value specified for hierarchical preconditioner, using %f\n", globalVars.m_dHierPreEps);
-	}
-	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0 && globalVars.m_bRefineCharge == true) {
-		globalVars.m_bRefineCharge = false;
-		ErrMsg("Warning: 'refine mesh using calculated charges (-s)' option is not compatible with hierarchical preconditioner, resetting option to false\n");
 	}
 	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_SUPER) != 0 ) {
 		if(globalVars.m_uiSuperPreDim > SOLVE_MAX_SUPER_PRECOND_NUM) {
@@ -198,7 +186,7 @@ int CSolveCap::Run(CAutoRefGlobalVars globalVars)
 		// clean up memory
 		//
 		g_clsMemUsageCopy = g_clsMemUsage;
-		DeallocateMemory(AUTOREFINE_DEALLMEM_ALL, globalVars);
+		DeallocateMemory(AUTOREFINE_DEALLMEM_ALL);
 		// was allocated in SolveMain()
 		m_clsMulthier.DeallocateMemory();
 	}
@@ -273,7 +261,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
         
 		// clean memory (if charges / panels were still allocated after last run,
 		// and are now not used for discretization)
-		m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START, globalVars);
+		m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START);
 
         ret = m_clsMulthier.ReadFastCapFile(&globalVars);
         // if any error in ReadFastCapFile() (e.g. out of memory, user break, etc.)
@@ -299,13 +287,9 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
             // start timer to time solve step
             start = clock();
 
-            // clarify we start from scratch
-            globalVars.m_bRefineCharge = false;
-            globalVars.m_bKeepCharge = false;
-            globalVars.m_bKeepMesh = false;
             // clean memory (if charges / panels were still allocated after last run,
             // and are now not used for discretization)
-            m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START, globalVars);
+            m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START);
 
             // read input file and build super hierarchy;
             // will also modify 'globalVars' to report if there is complex permittivity
@@ -353,7 +337,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
 
             OutputCapMtx(cRe[0], cIm[0], globalVars);
 
-            OutputSolveStats(globalVars);
+            OutputSolveStats();
 
             finish = clock();
             solveTime = (float)(finish - start) / CLOCKS_PER_SEC;
@@ -366,7 +350,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
             oldlinksnum = m_clsMulthier.GetLinksNum(AUTOREFINE_HIER_PRE_0_LEVEL);
 
             // free memory, to be ready for next iteration
-            DeallocateMemory(AUTOREFINE_DEALLMEM_AT_END, globalVars);
+            DeallocateMemory(AUTOREFINE_DEALLMEM_AT_END);
 
 
             for(i=1; i<SOLVE_MAX_AUTO_ITERATIONS; i++) {
@@ -387,7 +371,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
 
                     // clean memory (if charges / panels were still allocated after last run,
                     // and are now not used for discretization)
-                    m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START, globalVars);
+                    m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START);
 
                     // read input file and build super hierarchy;
                     // will also modify 'globalVars' to report if there is complex permittivity
@@ -450,7 +434,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
                 OutputCapMtx(cRe[i], cIm[i], globalVars);
 
                 LogMsg("Weighted Frobenius norm of the difference between capacitance (auto option): %g\n", diff);
-                OutputSolveStats(globalVars);
+                OutputSolveStats();
 
                 finish = clock();
                 solveTime = (float)(finish - start) / CLOCKS_PER_SEC;
@@ -473,7 +457,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
 
 
                 // free memory, to be ready for next iteration
-                DeallocateMemory(AUTOREFINE_DEALLMEM_AT_END, globalVars);
+                DeallocateMemory(AUTOREFINE_DEALLMEM_AT_END);
             }
 
             // loop exhausted without a 'diff <= target' break: capRe/capIm
@@ -492,15 +476,13 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
 
             // clean memory (if charges / panels were still allocated after last run,
             // and are now not used for discretization)
-            m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START, globalVars);
+            m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START);
 
-            if(globalVars.m_bRefineCharge == false && globalVars.m_bKeepMesh == false) {
-                // read input file and build super hierarchy;
-                // will also modify 'globalVars' to report if there is complex permittivity
-                ret = InputFile(&globalVars);
-                if(ret != FC_NORMAL_END) {
-                    return ret;
-                }
+            // read input file and build super hierarchy;
+            // will also modify 'globalVars' to report if there is complex permittivity
+            ret = InputFile(&globalVars);
+            if(ret != FC_NORMAL_END) {
+                return ret;
             }
 
             LogMsg("\n");
@@ -537,7 +519,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
 
             OutputCapMtx(capRe, capIm, globalVars);
 
-            OutputSolveStats(globalVars);
+            OutputSolveStats();
         }
         
         // the result comes from the last Solve()
@@ -586,7 +568,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
     }
     
 	g_clsMemUsageCopy = g_clsMemUsage;
-	DeallocateMemory(AUTOREFINE_DEALLMEM_AT_END, globalVars);
+	DeallocateMemory(AUTOREFINE_DEALLMEM_AT_END);
 	m_clsMulthier.DeallocateMemory();
 
 	return ret;
@@ -625,7 +607,6 @@ void CSolveCap::AutoSetPrecondType(unsigned long numOfLinks, long condNum, CAuto
 void CSolveCap::OutputSolveParams(CAutoRefGlobalVars globalVars)
 {
 // debug
-//	LogMsg("Eps (-e): %g, max discr side (-s): %g:\n", globalVars.m_dEps, globalVars.m_dMaxDiscSide);
 //	LogMsg("Eps (-e): %g, mesh refinement (-m): %g, mesh curvature (-mc): %g\n", globalVars.m_dEps, globalVars.m_dMeshEps, globalVars.m_dMeshCurvCoeff);
 
     if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER) {
@@ -656,15 +637,6 @@ void CSolveCap::OutputSolveParams(CAutoRefGlobalVars globalVars)
 
 	LogMsg("GMRES tolerance (-t): %g\n", globalVars.m_dGmresTol);
 
-	if(globalVars.m_bRefineCharge == true) {
-		LogMsg("Refine mesh using charges (-s)\n");
-	}
-	if(globalVars.m_bKeepCharge == true) {
-		LogMsg("Keep charge information (-kc)\n");
-	}
-	if(globalVars.m_bKeepMesh == true) {
-		LogMsg("Keep start mesh information from previous run (-km)\n");
-	}
 	LogMsg("Out-of-core free memory to link memory condition (-f): %g\n", globalVars.m_dOutOfCoreRatio);
 	LogMsg("Potential interaction coefficient to mesh refinement ratio (-d): %g\n", globalVars.m_dEpsRatio);
 	LogMsg("Mesh curvature (-mc): %g\n", globalVars.m_dMeshCurvCoeff);
@@ -690,13 +662,10 @@ void CSolveCap::OutputSolvePrecondType(CAutoRefGlobalVars globalVars)
 	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_SUPER) != 0 ) {
 		LogMsg("Two-levels, two-levels preconditioner dimension (-ps): %d ", globalVars.m_uiSuperPreDim);
 	}
-	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0 ) {
-		LogMsg("Hierarchical, Eps (-phe): %g, max discr side (-phs): %g, tol (-pht): %g ", globalVars.m_dHierPreEps, globalVars.m_dMaxHierPreDiscSide, globalVars.m_dHierPreGmresTol);
-	}
 	LogMsg("\n");
 }
 
-void CSolveCap::OutputSolveStats(CAutoRefGlobalVars globalVars)
+void CSolveCap::OutputSolveStats()
 {
 	g_lPanelsNum = m_clsMulthier.GetPanelNum(AUTOREFINE_HIER_PRE_0_LEVEL);
 	// links # do not consider auto potential calculations. Must add to have the overall number of links.
@@ -708,10 +677,6 @@ void CSolveCap::OutputSolveStats(CAutoRefGlobalVars globalVars)
 	LogMsg("Number of panels after refinement: %lu\n", m_clsMulthier.GetPanelNum(AUTOREFINE_HIER_PRE_0_LEVEL));
 	LogMsg("Number of potential estimates: %lu\n", m_clsMulthier.m_ulNumofpotest);
 	LogMsg("Number of links: %lu (uncompressed %lu, compression ratio is %.1f%%)\n", g_lLinksNum, g_lPanelsNum * g_lPanelsNum, 100.0f - ((float)(g_lLinksNum)) / ((float)(g_lPanelsNum * g_lPanelsNum)) * 100.0);;
-	if( (globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0 ) {
-		LogMsg("Number of precond panels: %lu\n", m_clsMulthier.GetPanelNum(AUTOREFINE_HIER_PRE_1_LEVEL));
-		LogMsg("Number of precond links: %lu\n", m_clsMulthier.GetLinksNum(AUTOREFINE_HIER_PRE_1_LEVEL));
-	}
 	LogMsg("Max recursion level: %d\n", m_clsMulthier.m_iMaxLevel);
 	LogMsg("Max Mesh relative refinement value: %g\n", m_clsMulthier.m_dMaxMeshEps);
 
@@ -1011,34 +976,9 @@ int CSolveCap::RefineGeoAndCountLinks()
 
 	m_clsMulthier.SetInteractionLevel(AUTOREFINE_HIER_PRE_0_LEVEL);
 
-	if( (m_clsGlobalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0) {
-
-		// first step of refinement to form the hierarchical super pre-conditioner
-		//
-
-		globalVars.m_dEps = m_clsGlobalVars.m_dHierPreEps;
-		globalVars.m_dMaxDiscSide = m_clsGlobalVars.m_dMaxHierPreDiscSide;
-		globalVars.m_bOutputGeo = false;
-		globalVars.m_bOutputCapMtx = false;
-
-		ret = m_clsMulthier.AutoRefinePanels(globalVars, AUTOREFINE_HIER_PRE_1_LEVEL);
-		ret = m_clsMulthier.AutoRefineLinks(globalVars);
-
-		if(ret !=  FC_NORMAL_END) {
-			return ret;
-		}
-
-		// second step of refinement for actual solution
-		//
-
-		globalVars = m_clsGlobalVars;
-		ret = m_clsMulthier.AutoRefinePanels(globalVars, AUTOREFINE_HIER_PRE_0_LEVEL);
-	}
-	else {
-		// refinement for actual solution
-		globalVars = m_clsGlobalVars;
-		ret = m_clsMulthier.AutoRefinePanels(globalVars, AUTOREFINE_HIER_PRE_0_LEVEL);
-	}
+	// refinement for actual solution
+	globalVars = m_clsGlobalVars;
+	ret = m_clsMulthier.AutoRefinePanels(globalVars, AUTOREFINE_HIER_PRE_0_LEVEL);
 
 	return ret;
 }
@@ -1289,19 +1229,6 @@ int CSolveCap::Solve(CLin_Matrix *cRe, CLin_Matrix *cIm)
 					return ret;
 				}
 			}
-			// if hierarchical precond, need flex gmres version (upper step, being approximated
-			// through a second gmres iteration, gives different results at each main gmres iteration)
-			else if( (m_clsGlobalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0) {
-
-				// this is not supported at the moment, also considering complex capacitance
-				ErrMsg("Error: using unsupported preconditioner 'h'!");
-
-				ret = gmresFlexPrecondSFastAll(&potential, &charge, m_clsGlobalVars.m_dGmresTol);
-
-				if(ret !=  FC_NORMAL_END) {
-					return ret;
-				}
-			}
 			else {
 				ret = gmresPrecondSFastAll(&potential, &charge, m_clsGlobalVars.m_dGmresTol);
 
@@ -1387,26 +1314,9 @@ int CSolveCap::Solve(CLin_Matrix *cRe, CLin_Matrix *cIm)
 				chindex += (*itc2)->m_ulLeafPanelNum;
 			}
 
-			// store charges for later use, if requested
-			// Remark: charges from the solve on each conductor are summed up;
-			// this is a simplification, in order not to have to save the charges
-			// for each conductor and use it to discretize differently the geometry
-			// for each solve pass (would not be good for speed improvement)
-			if(m_clsGlobalVars.m_bKeepCharge == true) {
-				// charges
-				// remark: you must modify also the functions CAutoRefine::CopyCharges()
-				// and CAutoRefine::OutputPanelTree(), dividing charge by the panel area,
-				// to work with charge densities
-				for(i=0; i < panelnum; i++) {
-//					m_clsMulthier.m_fGlobalCharges[i] += fabs(charge[i]);
-					m_clsMulthier.m_fGlobalCharges[i] += charge[i];
-				}
-			}
-
 			if(m_clsGlobalVars.m_bOutputCharge == true) {
 				// charges
-				// remark: the using functions (e.g. CAutoRefine::CopyCharges()
-				// and CAutoRefine::OutputPanelTree() ), will divide the charge by the panel area,
+				// remark: the using function CAutoRefine::OutputPanelTree() will divide the charge by the panel area,
 				// to work with charge densities
 				//
 				// update vector dimension
@@ -1598,119 +1508,6 @@ int CSolveCap::AllocateMemory()
 	// record up to which iteration the arrays have been pre-allocated
 	m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_0_LEVEL] = 0;
 
-	// only in case the user is requesting a hierarchical preconditioner,
-	// pre-allocate matrices for gmres on upper levels of hierarchy
-	if( (m_clsGlobalVars.m_ucPrecondType & AUTOREFINE_PRECOND_HIER) != 0) {
-
-		//
-		// allocate matrices
-		// (note that we use 0-index arrays)
-		//
-
-		// dimension is the same number of elements as in bottom level,
-		// due to the nature of the hierarchical preconditioner (leaf
-		// elements on the diagonal)
-
-		// q and h matrices
-		if(m_pclsGmres1_q == NULL) {
-			// SAFENEW_ARRAY_NOMEM_RET(TYPE, VAR, LEN)
-			SAFENEW_ARRAY_NOMEM_RET(CLin_Vector, m_pclsGmres1_q, SOLVE_GMRES_ITER_MAX+1)
-		}
-		if(m_pclsGmres1_q == NULL) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += (SOLVE_GMRES_ITER_MAX+1) * sizeof(CLin_Vector);
-		// init first and second element
-		ret = m_pclsGmres1_q[0].newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		ret = m_pclsGmres1_q[1].newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-
-		if(m_pclsGmres1_h == NULL) {
-			// SAFENEW_ARRAY_NOMEM_RET(TYPE, VAR, LEN)
-			SAFENEW_ARRAY_NOMEM_RET(CLin_Vector, m_pclsGmres1_h, SOLVE_GMRES_ITER_MAX)
-		}
-		if(m_pclsGmres1_h == NULL) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += SOLVE_GMRES_ITER_MAX * sizeof(CLin_Vector);
-		// init first element
-		ret = m_pclsGmres1_h[0].newsize(2);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += 2 * sizeof(double);
-
-		//
-		// declare vectors (note that we use
-		// 0-index arrays)
-		//
-		// g, v, w, z, y vectors
-		ret = m_clsGmres1_g.newsize(numElems_0+1);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += (numElems_0 + 1) * sizeof(double);
-		ret = m_clsGmres1_v.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		ret = m_clsGmres1_w.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		ret = m_clsGmres1_z.newsize(numElems_0+1);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += (numElems_0 + 1) * sizeof(double);
-		ret = m_clsGmres1_y.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		// c,s vectors
-		ret = m_clsGmres1_c.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		ret = m_clsGmres1_s.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		// r vector
-		ret = m_clsGmres1_r.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-
-		// Pq vector (preconditioned vector)
-		ret = m_clsGmres1_Pq.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-		// x0 vector (initial solution vector)
-		ret = m_clsGmres1_x0.newsize(numElems_0);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += numElems_0 * sizeof(double);
-
-		// record up to which iteration the arrays have been pre-allocated
-		m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_1_LEVEL] = 0;
-	}
 
 
 	if( (m_clsGlobalVars.m_ucPrecondType & AUTOREFINE_PRECOND_SUPER) != 0) {
@@ -1794,9 +1591,9 @@ int CSolveCap::AllocateMemory()
 }
 
 // delete structures
-void CSolveCap::DeallocateMemory(int command, CAutoRefGlobalVars globalVars)
+void CSolveCap::DeallocateMemory(int command)
 {
-	m_clsMulthier.Clean(command, globalVars);
+	m_clsMulthier.Clean(command);
 
 	if(m_pCondCharges != NULL) {
 		delete [] m_pCondCharges;
@@ -2602,313 +2399,6 @@ int CSolveCap::gmresPrecondSFastAll(CLin_Vector *b, CLin_Vector *x, double gmres
 	return FC_NORMAL_END;
 }
 
-//   Generalized Minimum Residual Method with preconditioner
-//
-//   x = gmresPrecond(A,b,P) attempt to solve the preconditioned
-//   system A*P*y = b & x = P*y
-//
-//   Enrico Di Lorenzo, 2004/07/06
-//
-//   'fast' refers to the direct vector multiplication loops used
-//   instead of CLin_Vector class operator*, which requires
-//   the creation of a temp object for every assignment operation
-//
-//   the 's' on the other hand refers to the scilab gmres correction,
-//   to make convergence faster, that basically uses as residual
-//   a weighted residual: normr = || b - Ax || / || b ||, that is
-//   normr = fabs(g[i+1]) / normb;
-//   and not
-//   normr = fabs(g[i+1]);
-//   see also the notes inline about this choice
-//
-//   the 'all' refers to the increase of speed not allocating memory
-//   locally every time
-//
-//   the 'upper' refers to the fact that this function is used in
-//   upper iteration of hierarchical precond, so it is using
-//   other global vars than 'gmresPrecondSFastAll', since it will
-//   be called for each iteration step
-int CSolveCap::gmresPrecondSFastAllUpper(CLin_Vector *b, CLin_Vector *x, double gmresTol, unsigned char precondType)
-{
-	double normr, normb, tmp1, tmp2, length;
-	long i, ii, size, j, iteration;
-	bool ret;
-	int retInt;
-
-	// get system size
-	size = b->size();
-	// check consistency of size
-//	ASSERT(size == *x.size());
-
-	// if there is a preconditioner
-	if(precondType != AUTOREFINE_PRECOND_NONE) {
-
-		// initial vector: having the approx inverted matrix, it is cheap to calculate the initial vector.
-		//  Simply put, to solve the preconditioned system
-		//  A * P * y = b and x = P * y, the best choice for y0 initial vector is b,
-		//  since a good P should be as similar as possible to inv(A), so A * P ~= I
-		//  So x0 = P * y0 = P * b
-		ComputePrecondVectFast(&m_clsGmres1_x0, b, precondType);
-
-		// r = b - A * x0;
-		// matrix - vector multiplication
-		retInt = m_clsMulthier.MultiplyMatByVec_fast(&m_clsGmres1_v, &m_clsGmres1_x0);
-		if(retInt != FC_NORMAL_END) {
-			return retInt;
-		}
-
-		// and get r
-		m_clsGmres1_r = *b - m_clsGmres1_v;
-		normr = mod(m_clsGmres1_r);
-		normb = mod(*b);
-	}
-	else {
-		// no preconditioner; assumes that initial vector x0 is an all zeros vector
-		//
-		m_clsGmres1_r = *b;
-		normr = mod(m_clsGmres1_r);
-		normb = normr;
-	}
-
-	// allocate and init first column of Q matrix
-	m_pclsGmres1_q[0] = CLin_Vector(m_clsGmres1_r / normr);
-
-	// init first element of first row of the
-	// Q matrix of the QR factors of H; this should be 1,
-	// using normr will produce the first row
-	// multiplied by normr, which is used to compute the solution
-	// Remark: this is not the Q matrix whose columns are q(i,j)
-	m_clsGmres1_g[0] = normr;
-
-	LogMsg("\nUpper GMRES Iteration: ");
-
-	//
-	// if the norm of the residual is small enough,
-	// initial vector is a good enough solution
-	//
-	if(normr / normb < gmresTol) {
-
-		// dump residual and first iteration
-		if(m_clsGlobalVars.m_bDumpResidual == true) {
-			LogMsg("%.3g ", normr / normb);
-		}
-		LogMsg("%d \n", 0);
-
-		if(precondType == AUTOREFINE_PRECOND_NONE) {
-			*x = CLin_Vector(size, 0.0);
-		}
-		else {
-			*x = m_clsGmres1_x0;
-		}
-		return 0;
-	}
-
-	// start iteration
-	for(i = 0; i < SOLVE_GMRES_ITER_MAX && i < size; i++) {
-
-		if(g_bFCContinue == false) {
-			return FC_USER_BREAK;
-		}
-
-		//
-		// execute the i-th Arnoldi step, thus computing
-		// the i-th column of the H (upper Hessemberg) matrix
-		//
-
-		if(m_clsGlobalVars.m_bDumpResidual == true) {
-			LogMsg("%.3g ", normr);
-		}
-		LogMsg("%d ", i);
-
-		// allocate only if not already pre-allocated
-		if((long)m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_1_LEVEL] < i) {
-
-			ASSERT((long)m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_1_LEVEL] == i-1);
-
-			// allocate new column of h
-			// (remark: since vectors are 0-based, must
-			// allocate i+2 entries and not only i+1;
-			// i.e. variable 'i' starts at 0!)
-			ret = m_pclsGmres1_h[i].newsize(i+2);
-			if(ret == false) {
-				return FC_OUT_OF_MEMORY;
-			}
-			g_clsMemUsage.m_ulGmresMem += (i + 2) * sizeof(double);
-			// allocate new column of q
-			ret = m_pclsGmres1_q[i+1].newsize(size);
-			if(ret == false) {
-				return FC_OUT_OF_MEMORY;
-			}
-			g_clsMemUsage.m_ulGmresMem += size * sizeof(double);
-
-			m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_1_LEVEL]++;
-		}
-
-		// compute new vector
-		//
-		if(precondType == AUTOREFINE_PRECOND_NONE) {
-			retInt = m_clsMulthier.MultiplyMatByVec_fast(&m_clsGmres1_v, &m_pclsGmres1_q[i]);
-			if(retInt != FC_NORMAL_END) {
-				return retInt;
-			}
-		}
-		else {
-			// compute preconditioned vector
-			ComputePrecondVectFast(&m_clsGmres1_Pq, &m_pclsGmres1_q[i], precondType);
-			// and use it in matrix - vector multiplication
-			retInt = m_clsMulthier.MultiplyMatByVec_fast(&m_clsGmres1_v, &m_clsGmres1_Pq);
-			if(retInt != FC_NORMAL_END) {
-				return retInt;
-			}
-		}
-
-		m_clsGmres1_w = m_clsGmres1_v;
-
-		// orthogonalize it
-		for(j=0; j<=i; j++) {
-			m_pclsGmres1_h[i][j] = dot_prod(m_pclsGmres1_q[j], m_clsGmres1_w);
-			for(ii=0; ii<(long)m_clsGmres1_v.size(); ii++) {
-				m_clsGmres1_v[ii] = m_clsGmres1_v[ii] - m_pclsGmres1_h[i][j] * m_pclsGmres1_q[j][ii];
-			}
-		}
-
-		m_pclsGmres1_h[i][i+1] = mod(m_clsGmres1_v);
-
-		for(ii=0; ii<(long)m_clsGmres1_v.size(); ii++) {
-			m_pclsGmres1_q[i+1][ii] = m_clsGmres1_v[ii] / (m_pclsGmres1_h[i][i+1]);
-		}
-
-		//
-		// rotate new vector (Givens rotations) to compute
-		// the (R;0) matrix of the QR factors of H(j+1);
-		// this is done updating (Q';tmp')*H(j) = (R(j);0)
-		// to produce (Q';tmp')*H(j+1)=(R(j+1);0)
-		// Remark: the first time the loop is executed,
-		// this rotation does not happen
-		//
-
-		// apply all old rotations to new i-th column
-		// of the H matrix to get Q*H from H, but for the
-		// last two elements
-		for(j=0; j<i; j++) {
-			tmp1 = m_pclsGmres1_h[i][j];
-			tmp2 = m_pclsGmres1_h[i][j+1];
-			m_pclsGmres1_h[i][j] = m_clsGmres1_c[j] * tmp1 - m_clsGmres1_s[j]* tmp2;
-			m_pclsGmres1_h[i][j+1] = m_clsGmres1_c[j] * tmp2 + m_clsGmres1_s[j] * tmp1;
-		}
-
-		// compute the new Givens rotation to annihilate h[i][i+1]
-		tmp1 = m_pclsGmres1_h[i][i];
-		tmp2 = m_pclsGmres1_h[i][i+1];
-		length = sqrt(tmp1 * tmp1 + tmp2 * tmp2);
-		m_clsGmres1_c[i] = tmp1/length;
-		m_clsGmres1_s[i] = -tmp2/length;
-
-		// apply new Givens rotation to incomplete
-		// (Q';tmp')*H(j+1) matrix i-th column
-		// to get the complete (R(j+1);0)
-		m_pclsGmres1_h[i][i] = m_clsGmres1_c[i] * tmp1 - m_clsGmres1_s[i] * tmp2;
-		// this should be zero anyway
-		//h(i+1,i) = c(i) * tmp2 + s(i) * tmp1;
-		m_pclsGmres1_h[i][i+1] = 0;
-
-		//
-		// Compute recursively the first column of the (Q';tmp')
-		// matrix of the QR factors of H(j+1); this is used to
-		// get implicitly the norm of the residual and to compute
-		// the solution once the norm is small enough
-		//
-
-		tmp1 = m_clsGmres1_g[i];
-		m_clsGmres1_g[i] = m_clsGmres1_c[i] * tmp1;
-		m_clsGmres1_g[i+1] = m_clsGmres1_s[i] * tmp1;
-
-		// this is the norm of the residual
-		// remark: || b - A*Qj*z || = normb * fabs(g[i+1])
-		// (see "Matrix analysis and applied linear algebra", Meyers)
-		// so fabs(g[i+1]) is already the norm of the residual
-		// weighted by the norm of b (i.e the % difference)
-		// However this is not true here, also verified
-		// explicitly calculating the residual norm, once the solution
-		// is found (see below), so the weighted formula is correct
-		normr = fabs(m_clsGmres1_g[i+1]) / normb;
-
-		//
-		// if the norm of the residual is small enough,
-		// exit loop (and return solution)
-		//
-		if(normr < gmresTol) {
-			break;
-		}
-	}
-
-	if(i >= SOLVE_GMRES_ITER_MAX || i >= size) {
-		ErrMsg("\nError: not converging after %d iterations, norm of the residual is %.3f, while targeting %.3f\n", i, normr, gmresTol);
-		// either case, since we ended the 'for' loop, 'i' has been incremented of one more;
-		// to avoid breaking the end of the arrays here below, we must decrease 'i'
-		i--;
-	}
-
-	if(m_clsGlobalVars.m_bDumpResidual == true) {
-		LogMsg("%.3f ", normr);
-	}
-	LogMsg("\n");
-
-	//
-	// compute the solution, solving H(i)*z = normr * e1 for z using
-	// the first row of the Q matrix and the R matrix of the QR
-	// factorization of H; then the solution is x = Q(i)*z
-	//
-
-	iteration = i;
-
-	// H(i)*z = normb*e1 gives Q*R*z = normb*e1 -> R*z = Q'*normb*e1
-	// Since g(i) is already the first column of Q' multiplied by normb,
-	// it is the term Q'*normb*e1, so init the solution
-	m_clsGmres1_z = m_clsGmres1_g;
-
-	// then solve R*z = Q'*normr*e1 by back substitution,
-	// knowing that R is upper triangular
-	for(i = iteration; i>=0; i--) {
-		m_clsGmres1_z[i]= m_clsGmres1_z[i] / m_pclsGmres1_h[i][i];
-		for(j = i-1; j>=0; j--) {
-			m_clsGmres1_z[j] = m_clsGmres1_z[j] - m_pclsGmres1_h[i][j] * m_clsGmres1_z[i];
-		}
-	}
-
-
-	// multiply z by Q(i) to get y, the solution
-	// of the (possibly preconditioned) system
-	for(i=0; i<size; i++) {
-		for(j=0, tmp1 = 0; j<=iteration; j++) {
-			tmp1 += m_pclsGmres1_q[j][i] * m_clsGmres1_z[j];
-		}
-		m_clsGmres1_y[i] = tmp1;
-	}
-
-	if(precondType == AUTOREFINE_PRECOND_NONE) {
-		*x = m_clsGmres1_y;
-	}
-	else {
-		// undo the preconditioner to get x, the final solution,
-		// also considering initial vector in the solution
-		//x = x0 + P * y;
-		ComputePrecondVectFast(x, &m_clsGmres1_y, precondType);
-		*x = m_clsGmres1_x0 + *x;
-	}
-
-	// debug : explicit calculation of residual vector
-	// (is equal to normr*normb in this routine; this proves
-	// that normr here is weighted on normb)
-	//double residual2;
-	//CLin_Vector b_approx(size);
-	//m_clsMulthier.MultiplyMatByVec_fast(x, &b_approx);
-	//residual2 = mod(*b - b_approx);
-
-	LogMsg("\n");
-	return 0;
-}
-
 //   Flexible Generalized Minimum Residual Method with preconditioner
 //
 //   x = gmresPrecond(A,b,P) attempt to solve the preconditioned
@@ -3698,21 +3188,6 @@ void CSolveCap::ComputePrecondVectFast(CLin_Vector *Pq, CLin_Vector *q, unsigned
 			}
 		}
 
-	}
-	else {
-
-		//
-		// hierarchical preconditioner
-		//
-
-		// multiplication step, calculates the result of super preconditioner matrix multiplication
-		// using gmres (hierarchical super preconditioner)
-		m_clsMulthier.SetInteractionLevel(AUTOREFINE_HIER_PRE_1_LEVEL);
-		// leave only the lower level precond (if any)
-		precondType &= ~(AUTOREFINE_PRECOND_HIER);
-		gmresPrecondSFastAllUpper(q, Pq, m_clsGlobalVars.m_dHierPreGmresTol, precondType);
-		// reset lower level
-		m_clsMulthier.SetInteractionLevel(AUTOREFINE_HIER_PRE_0_LEVEL);
 	}
 }
 

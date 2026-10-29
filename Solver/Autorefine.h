@@ -104,7 +104,6 @@ using namespace std;
 // deallocate memory commands
 #define AUTOREFINE_DEALLMEM_AT_END			1
 #define AUTOREFINE_DEALLMEM_AT_START		2
-#define AUTOREFINE_DEALLMEM_CLEAN_CHARGES	4
 #define AUTOREFINE_DEALLMEM_ALL				128
 
 // max number of levels in the input file recursion
@@ -123,7 +122,7 @@ public:
 	int AutoRefinePanels(CAutoRefGlobalVars globalVars, unsigned char interactLevel = 0);
 	int AutoRefineLinks(CAutoRefGlobalVars globalVars);
 	int ReadFastCapFile(CAutoRefGlobalVars *globalVars);
-	void Clean(int command, CAutoRefGlobalVars globalVars);
+	void Clean(int command);
 	void OutputFastCapFile(std::string fileinname, std::string suffix, CLin_Vector *condCharges = NULL);
 //	void CleanOnlyUpToSupHie();
 	void SelfPotential(CAutoPanel *panel, double *potestRe, double *potestIm);
@@ -187,7 +186,6 @@ public:
 
 	CAutoRefGlobalVars m_clsGlobalVars;
 	unsigned char m_ucInteractionLevel;
-	float *m_fGlobalCharges;
 	double m_dMaxMeshEps;
 	CLin_Vector m_clsSelfPotCoeff, m_clsImgSelfPotCoeff;
 	unsigned char *m_pucDielIndex;
@@ -222,7 +220,6 @@ protected:
 	int SaveLinks(bool saveAlsoPot = true);
 	int LoadLinks(unsigned long block, bool loadAlsoPot = true);
 	void DumpMemoryInfo();
-	void CopyCharges(CAutoElement *panel);
 	void RecurseIndex(CAutoElement *panel);
 	void DeletePanelsAndConductors();
 	void DeleteLinkArray(unsigned int level);
@@ -249,7 +246,6 @@ protected:
 	void OutputPanelTree(char *condname, CAutoSegment *panel, FILE *fout, int dielIndex = AUTOREFINE_NO_DIEL_INDEX);
     void OutputPanelList(StlAutoCondDeque::iterator itc, FILE *fout, int dielIndex);
     void OutputPanel(char *condname, CAutoPanel *panel, FILE *fout, int dielIndex);
-	int Discretize(CAutoPanel *panel);
 	int DiscretizeSelf(CAutoPanel *panel);
 	int DiscretizeSelf(CAutoSegment *panel);
 	int DiscretizeMutual(CAutoPanel *panel1, CAutoPanel *panel2, bool selfCond);
@@ -284,8 +280,7 @@ protected:
 	unsigned long m_ulLinkChunkNum[AUTOPANEL_MAX_NUM_OF_HIERARCHIES];
 	unsigned long *m_ulUniqueLinkChunkIDs, *m_ulUniquePotChunkIDs;
 	CAutoConductor *m_pCurrentConductor;
-	double m_dMaxSigma, m_dMidSigma, m_dMinSigma;
-	bool m_bInitCharges, m_bPopulateNodeArray;
+	bool m_bPopulateNodeArray;
 	int m_iParseLevel;
 	int m_iGroupNum[AUTOREFINE_MAX_PARSE_LEVEL];
 	CLin_Vector *m_pLocalCondCharge;
