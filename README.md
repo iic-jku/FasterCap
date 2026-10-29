@@ -1,101 +1,88 @@
 # FasterCap
 
-## Copyright
+FasterCap is a three- and two-dimensional capacitance extraction program.
 
-Copyright (c) 2019
-FastFieldSolvers S.R.L. - http://www.fastfieldsolvers.com
+This is the fork maintained by the [Institute for Integrated Circuits and Quantum Computing (IICQC)](https://iic.jku.at/) of Johannes Kepler University Linz (IIC-JKU). It continues FasterCap 6.0.7 by Enrico Di Lorenzo, FastFieldSolvers S.R.L., whose repository [ediloren/FasterCap](https://github.com/ediloren/FasterCap) has had no commits since 6.0.7 in 2018. The fork is not a FastFieldSolvers release: report problems in [its issues](https://github.com/iic-jku/FasterCap/issues).
 
-## Description
+[`klayout-pex`](https://github.com/iic-jku/klayout-pex), the parasitic extraction for `KLayout`, runs `FasterCap` from this fork's releases.
 
-FasterCap is a powerful three- and two-dimensional capactiance extraction program. 
+## Changes from 6.0.7
 
-For pre-compiled binaries, support, consultancy and additional information please visit http://www.fastfieldsolvers.com/
-Access to the download pages is free, and you may access anonymously if you want.
+[`History.txt`](History.txt) lists them per release. In short:
 
-The source code is released under LGPL 2.1 or any later LGPL version, see the file LICENSE.txt for the details.
+- fixes of wrong results: out-of-core runs, dielectric interfaces in 3D and 2D, non-planar `Q` panels, the block preconditioner
+- runs that fail say so: exit code 75 when GMRES doesn't converge, 65 for NaN or infinite results, 74 for input `FasterCap` can't read
+- out-of-core runs on Linux and macOS, BLAS (OpenBLAS, Accelerate), wxWidgets 3.2 and 3.3, headless builds
+- release assets for Ubuntu 22.04 and 24.04, Windows and macOS, built and tested in CI
+- regression tests and unit tests, run with `ctest`
 
-## Compiling
+## Installing
 
-FasterCap can be compiled for MS Windows and for *nix. For multiple platform compilation support, FasterCap uses CMake, plus Code::Blocks for the GUI version.
-The following software tools and complier chains are required. Used versions are indicated, higher version may work, but were not tested.
+The [releases](https://github.com/iic-jku/FasterCap/releases) hold console builds without GUI:
 
-###  MS Windows 64 bits
+- Ubuntu 22.04 and 24.04, x86-64: a `.deb` package, e.g. `sudo apt install ./FasterCap_6.2.0_amd64_ubuntu-24.04.deb`, or a `.tar.gz`
+- macOS, arm64: a `.tar.gz` with the executable, which needs Homebrew's `libomp` and `wxwidgets` (`brew install libomp wxwidgets`)
+- Windows, x64: a `.tar.gz` with `FasterCap.exe` and the OpenBLAS and wxWidgets DLLs, which needs the Microsoft Visual C++ 2015-2022 Redistributable (x64), also for OpenMP
 
-- CMake 3.12
-- Code::Blocks, version 13.12
-- TDM-GCC 64 bits, version 4.8.1
-- wxWidgets, version 3.2
+## Running
 
-#### Notes
+```
+FasterCap -b <input file> [options]
+```
 
-- Use a fresh TDM-GCC package, not the one shipped with Code::Blocks, as the latter is missing the TDM OpenMP package.
-      
-- You need to pre-compile wxWidgets with TDM-GCC. Do not use pre-compiled versions, as the used compiler switch configurations may be very different when generating the binaries. Do NOT compile as monolithic, so .exe are smaller. Do two compiles, debug + release, using MSDOS makefiles and TDM-GCC (no need to use MSYS).
+For example, `FasterCap -b cubes.lst -a0.01` refines the geometry until the capacitance matrix changes by less than 1 %. `FasterCap -b?` lists the options, and the help in [`doc/pdf`](doc/pdf) describes the input files, the options and the output.
 
-- Run CMake until you configure all the required parameters (you need some knowledge of how CMake works). You may want to set the switch FASTFIELDSOLVERS_HEADLESS as ON for a DOS-only version ("headless") of the software, however under Windows this is useless; just run FasterCap in shell-only mode with the appropriate -b switch (see FasterCap documentation)
+Exit codes:
 
-###  Linux 64 bits
+| code | meaning |
+|---|---|
+| 0 | the matrix is printed |
+| 1 | other error |
+| 64 | wrong command line |
+| 65 | the matrix has NaN or infinite entries; it is not printed |
+| 66 | the input file can't be opened |
+| 71 | out of memory |
+| 74 | the input can't be read, e.g. a PATRAN neutral file or a self-intersecting `Q` panel |
+| 75 | GMRES didn't converge; the matrix of the last iteration is printed |
+| 97 | the run can't go out-of-core |
+| 98 | unexpected exception |
+| 125 | stopped, e.g. by Ctrl-C or SIGTERM |
 
-- CMake 3.12
-- Code::Blocks, version 13.12
-- GCC, version 4.8.1
-- wxWidgets (wxGTK), version 3.2
+## Building
 
-#### Notes
+`FasterCap` needs the [`LinAlgebra`](https://github.com/iic-jku/LinAlgebra) and [`Geometry`](https://github.com/iic-jku/Geometry) sources of this fork next to it:
 
-- Run CMake until you configure all the required parameters (you need some knowledge of how CMake works), then generate a CodeBlock project. You may want to set the switch FASTFIELDSOLVERS_HEADLESS as ON for a shell-only version ("headless") of the software, or you can keep this OFF and just run FasterCap in shell-only mode with the appropriate -b switch (see FasterCap documentation)
+```
+git clone https://github.com/iic-jku/FasterCap.git
+git clone https://github.com/iic-jku/LinAlgebra.git
+git clone https://github.com/iic-jku/Geometry.git
+```
 
-Example (using a GUI-less CMake):
+Requirements: CMake 3.12 or later, a C++ compiler with OpenMP, a BLAS library and wxWidgets 3.0 or later.
 
-Move to the build directory you choose (different from the source files directory) and type the following command, where "../FasterCap" is the path to the base directory containing the FasterCap source code:
-    
-`cmake -G"CodeBlocks - Unix Makefiles" -DCMAKE_BUILD_TYPE=Release ../FasterCap`
+- Ubuntu 24.04: `sudo apt install cmake g++ libomp-dev libopenblas-dev wx3.2-headers libwxgtk3.2-dev` (22.04: `wx3.0-headers libwxbase3.0-dev`)
+- macOS: `brew install cmake libomp wxwidgets`, then `export OpenMP_ROOT=$(brew --prefix)/opt/libomp`; macOS uses the Accelerate BLAS
+- Windows: Visual Studio with the wxWidgets 3.2 and OpenBLAS binaries; [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) shows the steps
 
-Then you can open Code::Blocks, open the FasterCap.cbp project file created by CMake under the build diretory, and compile it.
+A console build without GUI:
 
-###  Linux 64 bits headless
+```
+cmake -S FasterCap -B build -DCMAKE_BUILD_TYPE=Release -DFASTFIELDSOLVERS_HEADLESS=ON
+cmake --build build -j
+```
 
-- CMake 3.12
-- GCC, version 4.8.1 or higher (higher version tested: on 5.4.0)
-- wxWidgets, version 3.2 or higher (higher version tested: 3.2.5)
-
-#### Notes
-
-- Run CMake until you configure all the required parameters (you need some knowledge of how CMake works). You **must** set the switch FASTFIELDSOLVERS_HEADLESS as ON, as in a headless Linux distro you have no drivers at all for video.
-
-Example: 
-
-Move to the build directory you choose (different from the source files directory) and type the following command, where "../FasterCap" is the path to the base directory containing the FasterCap source code:
-    
-`cmake -G"Unix Makefiles"  -DCMAKE_BUILD_TYPE=Release -DFASTFIELDSOLVERS_HEADLESS=ON ../FasterCap`
-
-Then you can launch the build process with:
-    
-`make`
-  
-Remark: at run time you will see the an "Assert failure" message. This is a wxWidgets issue, see ["debug message when running without session manager"](http://trac.wxwidgets.org/ticket/16024).
-The assert is harmless, and it is fixed starting from wxWidgets 3.1.1
+On macOS, add `-DwxWidgets_CONFIG_EXECUTABLE=$(brew --prefix)/bin/wx-config` to the first command. Without `-DFASTFIELDSOLVERS_HEADLESS=ON`, the build includes the GUI and needs the wxWidgets core and html libraries as well.
 
 ## Testing
 
-The regression tests in `tests/` need Python 3. After the build, run them with:
+```
+ctest --test-dir build --output-on-failure
+```
 
-`ctest --test-dir <build directory> --output-on-failure`
+The tests in [`tests/`](tests) need Python 3. Most run `FasterCap` on generated geometries and check each matrix: exit code, signs, symmetry, and analytic values where they are known. Unit tests check the potential integrals and the triangulation; they are built in console builds only.
 
-Each test runs FasterCap on a generated geometry and checks the capacitance matrix: exit code, signs, symmetry, analytic values where they are known (cube, sphere) and entries that are equal by the symmetry of the geometry.
+## License
 
-## Additional packages
+LGPL 2.1 or any later version, see [`LICENCE.txt`](LICENCE.txt).
 
-FasterCap also requires two additional source code packages, that are available through the same official repositories you can access from http://www.fastfieldsolvers.com/ or directly from GitHub.
-
-The packages are:
-
-- LinAlgebra
-- Geometry
-
-Both package directories, with the above names, must be at the same hierarchy level in the folder structure of the FasterCap source code directory, and are handled by CMake.
-
-## Additional information
-
-For any additional information please visit [FastFieldSolvers](https://www.fastfieldsolvers.com/), write on the [FastFieldSolvers Forum](https://www.fastfieldsolvers.com/forum) or [contact us](https://www.fastfieldsolvers.com/contact.htm).
-
+Copyright (c) 2019 FastFieldSolvers S.R.L., http://www.fastfieldsolvers.com. The fork's changes are under the same license.
