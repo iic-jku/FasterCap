@@ -480,6 +480,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
             // were never assigned, so return the last computed iteration
             // and flag non-convergence instead of silently returning success
             if(i >= SOLVE_MAX_AUTO_ITERATIONS) {
+                ErrMsg("\nWarning: automatic refinement did not converge within %d iterations, relative error target not met\n", SOLVE_MAX_AUTO_ITERATIONS);
                 capRe = cRe[SOLVE_MAX_AUTO_ITERATIONS - 1];
                 capIm = cIm[SOLVE_MAX_AUTO_ITERATIONS - 1];
                 ret = FC_CONVERGENCE_FAILED;
@@ -539,6 +540,11 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
             OutputSolveStats(globalVars);
         }
         
+        // the result comes from the last Solve()
+        if(ret == FC_NORMAL_END && m_bGmresConverged == false) {
+            ret = FC_CONVERGENCE_FAILED;
+        }
+
         // output the capacitance matrix to file, if requested, in CSV format
         if(globalVars.m_bOutputCapMtx == true) {
             OutputCapMtxToFile(capRe, capIm, globalVars);
@@ -966,7 +972,10 @@ void CSolveCap::PrintRetError(int retErr)
 		ErrMsg("\n\nWarning: Program execution stopped on user request!\n");
 	}
 	else if(retErr == FC_CONVERGENCE_FAILED) {
-		ErrMsg("\n\nWarning: Automatic refinement did not converge within %d iterations, relative error target not met. Returning best-effort (last computed) result, not a converged one!\n", SOLVE_MAX_AUTO_ITERATIONS);
+		ErrMsg("\n\nWarning: Not converged (see above), the result is the last computed one!\n");
+	}
+	else if(retErr == FC_INVALID_RESULT) {
+		ErrMsg("\n\nError: Capacitance matrix with NaN or infinite entries, program execution stopped!\n");
 	}
 	else if(retErr != FC_NORMAL_END) {
 		ErrMsg("\n\nError: Unknown error code, program execution stopped!\n");
@@ -1158,6 +1167,7 @@ int CSolveCap::Solve(CLin_Matrix *cRe, CLin_Matrix *cIm)
 
 	// init 'ret' status, in case anything fails
 	ret = FC_GENERIC_ERROR;
+	m_bGmresConverged = true;
 
 	panelnum = m_clsMulthier.GetPanelNum(AUTOREFINE_HIER_PRE_0_LEVEL);
 
@@ -1432,6 +1442,12 @@ int CSolveCap::Solve(CLin_Matrix *cRe, CLin_Matrix *cIm)
 
 	finish = omp_get_wtime();
 	m_fDurationSolve = (float)(finish - start);
+
+	// NaN or infinite entries make the Frobenius norm NaN or infinite; capacitances are far
+	// too small for the sum of their squares to overflow
+	if(ret == FC_NORMAL_END && !isfinite(FNorm(*cRe, *cIm))) {
+		ret = FC_INVALID_RESULT;
+	}
 
 	return ret;
 }
@@ -2515,6 +2531,7 @@ int CSolveCap::gmresPrecondSFastAll(CLin_Vector *b, CLin_Vector *x, double gmres
 
 	if(i >= SOLVE_GMRES_ITER_MAX || i >= size) {
 		ErrMsg("\nError: not converging after %d iterations, norm of the residual is %.3f, while targeting %.3f\n", i, normr, gmresTol);
+		m_bGmresConverged = false;
 		// either case, since we ended the 'for' loop, 'i' has been incremented of one more;
 		// to avoid breaking the end of the arrays here below, we must decrease 'i'
 		i--;
@@ -3130,6 +3147,7 @@ int CSolveCap::gmresFlexPrecondSFastAll(CLin_Vector *b, CLin_Vector *x, double g
 
 	if(i >= SOLVE_GMRES_ITER_MAX || i >= size) {
 		ErrMsg("\nError: not converging after %d iterations, norm of the residual is %.3f, while targeting %.3f\n", i, normr, gmresTol);
+		m_bGmresConverged = false;
 		// either case, since we ended the 'for' loop, 'i' has been incremented of one more;
 		// to avoid breaking the end of the arrays here below, we must decrease 'i'
 		i--;
@@ -3401,6 +3419,7 @@ int CSolveCap::gmresPrecondSFastAllX0(CLin_Vector *b, CLin_Vector *x, CLin_Vecto
 
 	if(i >= SOLVE_GMRES_ITER_MAX || i >= size) {
 		ErrMsg("\nError: not converging after %d iterations, norm of the residual is %.3f, while targeting %.3f\n", i, normr, m_clsGlobalVars.m_dGmresTol);
+		m_bGmresConverged = false;
 		// either case, since we ended the 'for' loop, 'i' has been incremented of one more;
 		// to avoid breaking the end of the arrays here below, we must decrease 'i'
 		i--;
