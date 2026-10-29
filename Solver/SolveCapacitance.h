@@ -59,7 +59,7 @@ public:
 	int Run(CAutoRefGlobalVars globalVars);
 	int SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin_Matrix &capIm);
 	void CopyCondNames(StlStringList &stringList);
-	void DeallocateMemory(int command, CAutoRefGlobalVars globalVars);
+	void DeallocateMemory(int command);
 	void DeallocatePrecond();
     void PrintRetError(int retErr);
 	    

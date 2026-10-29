@@ -183,7 +183,6 @@ CAutoRefine::CAutoRefine()
 
 	m_ulUniqueLinkChunkIDs = NULL;
 	m_ulUniquePotChunkIDs = NULL;
-	m_fGlobalCharges = NULL;
 	m_pucDielIndex = NULL;
 	m_pNodes = NULL;
 
@@ -193,7 +192,7 @@ CAutoRefine::CAutoRefine()
 
 CAutoRefine::~CAutoRefine()
 {
-	Clean(AUTOREFINE_DEALLMEM_ALL, m_clsGlobalVars);
+	Clean(AUTOREFINE_DEALLMEM_ALL);
 }
 /*
 // reset the structures to the status after BuildSuperHierarchy()
@@ -212,15 +211,14 @@ void CAutoRefine::CleanOnlyUpToSupHie()
 	}
 }
 */
-void CAutoRefine::Clean(int command, CAutoRefGlobalVars globalVars)
+void CAutoRefine::Clean(int command)
 {
 	unsigned int i;
 	unsigned long totChunksNum, k;
 	wxFileName tmpFileName;
     StlAutoCondDeque::iterator itc;
 
-	if( (command == AUTOREFINE_DEALLMEM_ALL) ||
-	        (command == AUTOREFINE_DEALLMEM_AT_END && globalVars.m_bKeepCharge == false) ||
+	if( (command == AUTOREFINE_DEALLMEM_ALL) || (command == AUTOREFINE_DEALLMEM_AT_END) ||
 	        (command == AUTOREFINE_DEALLMEM_AT_START) ) {
 
 		// delete panel tree and conductor list
@@ -237,18 +235,6 @@ void CAutoRefine::Clean(int command, CAutoRefGlobalVars globalVars)
 		}
 		g_clsMemUsage.m_ulPanelsMem = 0;
 		g_clsMemUsage.m_ulCondMem = 0;
-	}
-
-	if( (command == AUTOREFINE_DEALLMEM_ALL) ||
-	        (command == AUTOREFINE_DEALLMEM_AT_END && globalVars.m_bKeepCharge == false ) ||
-	        (command == AUTOREFINE_DEALLMEM_AT_START) ||
-	        (command == AUTOREFINE_DEALLMEM_CLEAN_CHARGES)) {
-
-		if(m_fGlobalCharges != NULL) {
-			delete m_fGlobalCharges;
-			m_fGlobalCharges = NULL;
-		}
-		g_clsMemUsage.m_ulChargesMem = 0;
 	}
 
 	// delete self-potential array
@@ -354,7 +340,6 @@ void CAutoRefine::DeleteLinkArray(unsigned int level)
 //
 int CAutoRefine::AutoRefinePanels(CAutoRefGlobalVars globalVars, unsigned char interactLevel)
 {
-	unsigned long i;
 	int ret;
 	StlAutoCondDeque::iterator itc1, itc2;
 	clock_t start, finish;
@@ -450,23 +435,8 @@ int CAutoRefine::AutoRefinePanels(CAutoRefGlobalVars globalVars, unsigned char i
 		}
 	}
 
-	// if global charges array was allocated, clear it (in this point of the code, the array is no more useful:
-	// if required, it should have already been used in Discretize() function)
-	Clean(AUTOREFINE_DEALLMEM_CLEAN_CHARGES, m_clsGlobalVars);
-
 	// allocate nodes array (will be populated in RecurseIndex() called in AutoRefineLinks() )
 	SAFENEW_ARRAY_RET(CAutoElement*, m_pNodes, m_ulNodeNum[m_ucInteractionLevel], g_clsMemUsage.m_ulPanelsMem)
-
-	// allocate array of global charges, used for refinement (if requested, and if on bottom level)
-	if(m_clsGlobalVars.m_bKeepCharge == true && m_ucInteractionLevel == AUTOREFINE_HIER_PRE_0_LEVEL) {
-
-		// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
-		SAFENEW_ARRAY_RET(float, m_fGlobalCharges, m_ulPanelNum[m_ucInteractionLevel], g_clsMemUsage.m_ulChargesMem)
-		// clear the array
-		for(i=0; i<m_ulPanelNum[m_ucInteractionLevel]; i++) {
-			m_fGlobalCharges[i] = 0.0;
-		}
-	}
 
 	// dry-scan all conductor groups to calculate # of links per panel and per supernode,
 	// plus the self-potentials.
@@ -1430,19 +1400,6 @@ void CAutoRefine::OutputPanelTree(char *condname, CAutoSegment *panel, FILE *fou
 				}
 				fprintf(fout, "  %e\n", (*m_pLocalCondCharge)[panel->m_lIndex[AUTOREFINE_HIER_PRE_0_LEVEL]] / panel->GetDimension());
 			}
-			else if(m_clsGlobalVars.m_bKeepCharge == true) {
-				fprintf(fout, "Q %s  %g %g %g %g %g %g %g %g %g %g %g %g", condname,
-				        panel->m_clsVertex[0].x, panel->m_clsVertex[0].y, 0.0,
-				        panel->m_clsVertex[1].x, panel->m_clsVertex[1].y, 0.0,
-				        panel->m_clsVertex[1].x, panel->m_clsVertex[1].y, AUTOREFINE_2D_ZCOORD,
-				        panel->m_clsVertex[0].x, panel->m_clsVertex[0].y, AUTOREFINE_2D_ZCOORD);
-				if((panel->m_ucType & AUTOPANEL_OUTPERM_ELEMENT_LEVEL) == AUTOPANEL_OUTPERM_ELEMENT_LEVEL) {
-					// local dielectric reference point
-					dielrefpoint = panel->GetCentroid() + panel->GetDielNormal();
-					fprintf(fout, "  %g %g %g", dielrefpoint.x, dielrefpoint.y, AUTOREFINE_2D_ZCOORD / 2.0);
-				}
-				fprintf(fout, "  %e\n", m_fGlobalCharges[panel->m_lIndex[AUTOREFINE_HIER_PRE_0_LEVEL]] / panel->GetDimension());
-			}
 			else {
 				fprintf(fout, "Q %s  %g %g %g %g %g %g %g %g %g %g %g %g", condname,
 				        panel->m_clsVertex[0].x, panel->m_clsVertex[0].y, 0.0,
@@ -1519,9 +1476,6 @@ void CAutoRefine::OutputPanel(char *condname, CAutoPanel *panel, FILE *fout, int
 
         if(m_clsGlobalVars.m_bOutputCharge == true && m_pLocalCondCharge != NULL && m_clsGlobalVars.m_bDumpInputGeo == false) {
             fprintf(fout, "  %e\n", (*m_pLocalCondCharge)[panel->m_lIndex[AUTOREFINE_HIER_PRE_0_LEVEL]] / panel->GetDimension());
-        }
-        else if(m_clsGlobalVars.m_bKeepCharge == true && m_clsGlobalVars.m_bDumpInputGeo == false) {
-            fprintf(fout, "  %e\n", m_fGlobalCharges[panel->m_lIndex[AUTOREFINE_HIER_PRE_0_LEVEL]] / panel->GetDimension());
         }
         else {
             fprintf(fout, "\n");

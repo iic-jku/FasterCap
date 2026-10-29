@@ -178,7 +178,7 @@ public:
 	double m_dEps, m_dMeshEps, m_dEpsRatio, m_dMeshCurvCoeff, m_dGmresTol;
 	double m_dAutoMaxErr, m_dOutOfCoreRatio;
 	bool m_bDumpResidual, m_bVerboseOutput, m_bOutputGeo, m_bDumpInputGeo, m_bAuto, m_bAutoPrecond, m_bDumpTimeMem;
-	bool m_bKeepCharge, m_bOutputCharge, m_bOutputCapMtx;
+	bool m_bOutputCharge, m_bOutputCapMtx;
 	char m_cScheme;
 
 	// variables not linked to user options, but to global statuses

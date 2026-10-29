@@ -75,10 +75,6 @@ void CAutoRefGlobalVars::Reset()
 	m_bOutputCapMtx = false;
 	// not used any more in 'Run' dialog, but calculated from -m and -d and used globally
 	m_dEps = m_dEpsRatio * m_dMeshEps;
-	// not used any more in 'Run' dialog, but must be kept because
-	// trigger operations in the code (watch out: may be used as unsupported options
-	// via automation!)
-	m_bKeepCharge = false;
     // not used in the 'Run' dialog, but globally used
 	m_ucHasCmplxPerm = AUTOREFINE_REAL_PERM;
 	m_bWarnGivenPre = false;

@@ -104,7 +104,6 @@ using namespace std;
 // deallocate memory commands
 #define AUTOREFINE_DEALLMEM_AT_END			1
 #define AUTOREFINE_DEALLMEM_AT_START		2
-#define AUTOREFINE_DEALLMEM_CLEAN_CHARGES	4
 #define AUTOREFINE_DEALLMEM_ALL				128
 
 // max number of levels in the input file recursion
@@ -123,7 +122,7 @@ public:
 	int AutoRefinePanels(CAutoRefGlobalVars globalVars, unsigned char interactLevel = 0);
 	int AutoRefineLinks(CAutoRefGlobalVars globalVars);
 	int ReadFastCapFile(CAutoRefGlobalVars *globalVars);
-	void Clean(int command, CAutoRefGlobalVars globalVars);
+	void Clean(int command);
 	void OutputFastCapFile(std::string fileinname, std::string suffix, CLin_Vector *condCharges = NULL);
 //	void CleanOnlyUpToSupHie();
 	void SelfPotential(CAutoPanel *panel, double *potestRe, double *potestIm);
@@ -187,7 +186,6 @@ public:
 
 	CAutoRefGlobalVars m_clsGlobalVars;
 	unsigned char m_ucInteractionLevel;
-	float *m_fGlobalCharges;
 	double m_dMaxMeshEps;
 	CLin_Vector m_clsSelfPotCoeff, m_clsImgSelfPotCoeff;
 	unsigned char *m_pucDielIndex;

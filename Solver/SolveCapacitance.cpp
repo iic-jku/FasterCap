@@ -79,7 +79,7 @@ CSolveCap::CSolveCap()
 CSolveCap::~CSolveCap()
 {
 	// free memory
-	DeallocateMemory(AUTOREFINE_DEALLMEM_ALL, m_clsGlobalVars);
+	DeallocateMemory(AUTOREFINE_DEALLMEM_ALL);
 
 }
 
@@ -186,7 +186,7 @@ int CSolveCap::Run(CAutoRefGlobalVars globalVars)
 		// clean up memory
 		//
 		g_clsMemUsageCopy = g_clsMemUsage;
-		DeallocateMemory(AUTOREFINE_DEALLMEM_ALL, globalVars);
+		DeallocateMemory(AUTOREFINE_DEALLMEM_ALL);
 		// was allocated in SolveMain()
 		m_clsMulthier.DeallocateMemory();
 	}
@@ -261,7 +261,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
         
 		// clean memory (if charges / panels were still allocated after last run,
 		// and are now not used for discretization)
-		m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START, globalVars);
+		m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START);
 
         ret = m_clsMulthier.ReadFastCapFile(&globalVars);
         // if any error in ReadFastCapFile() (e.g. out of memory, user break, etc.)
@@ -287,11 +287,9 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
             // start timer to time solve step
             start = clock();
 
-            // clarify we start from scratch
-            globalVars.m_bKeepCharge = false;
             // clean memory (if charges / panels were still allocated after last run,
             // and are now not used for discretization)
-            m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START, globalVars);
+            m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START);
 
             // read input file and build super hierarchy;
             // will also modify 'globalVars' to report if there is complex permittivity
@@ -352,7 +350,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
             oldlinksnum = m_clsMulthier.GetLinksNum(AUTOREFINE_HIER_PRE_0_LEVEL);
 
             // free memory, to be ready for next iteration
-            DeallocateMemory(AUTOREFINE_DEALLMEM_AT_END, globalVars);
+            DeallocateMemory(AUTOREFINE_DEALLMEM_AT_END);
 
 
             for(i=1; i<SOLVE_MAX_AUTO_ITERATIONS; i++) {
@@ -373,7 +371,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
 
                     // clean memory (if charges / panels were still allocated after last run,
                     // and are now not used for discretization)
-                    m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START, globalVars);
+                    m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START);
 
                     // read input file and build super hierarchy;
                     // will also modify 'globalVars' to report if there is complex permittivity
@@ -459,7 +457,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
 
 
                 // free memory, to be ready for next iteration
-                DeallocateMemory(AUTOREFINE_DEALLMEM_AT_END, globalVars);
+                DeallocateMemory(AUTOREFINE_DEALLMEM_AT_END);
             }
 
             // loop exhausted without a 'diff <= target' break: capRe/capIm
@@ -478,7 +476,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
 
             // clean memory (if charges / panels were still allocated after last run,
             // and are now not used for discretization)
-            m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START, globalVars);
+            m_clsMulthier.Clean(AUTOREFINE_DEALLMEM_AT_START);
 
             // read input file and build super hierarchy;
             // will also modify 'globalVars' to report if there is complex permittivity
@@ -570,7 +568,7 @@ int CSolveCap::SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin
     }
     
 	g_clsMemUsageCopy = g_clsMemUsage;
-	DeallocateMemory(AUTOREFINE_DEALLMEM_AT_END, globalVars);
+	DeallocateMemory(AUTOREFINE_DEALLMEM_AT_END);
 	m_clsMulthier.DeallocateMemory();
 
 	return ret;
@@ -639,9 +637,6 @@ void CSolveCap::OutputSolveParams(CAutoRefGlobalVars globalVars)
 
 	LogMsg("GMRES tolerance (-t): %g\n", globalVars.m_dGmresTol);
 
-	if(globalVars.m_bKeepCharge == true) {
-		LogMsg("Keep charge information (-kc)\n");
-	}
 	LogMsg("Out-of-core free memory to link memory condition (-f): %g\n", globalVars.m_dOutOfCoreRatio);
 	LogMsg("Potential interaction coefficient to mesh refinement ratio (-d): %g\n", globalVars.m_dEpsRatio);
 	LogMsg("Mesh curvature (-mc): %g\n", globalVars.m_dMeshCurvCoeff);
@@ -1319,22 +1314,6 @@ int CSolveCap::Solve(CLin_Matrix *cRe, CLin_Matrix *cIm)
 				chindex += (*itc2)->m_ulLeafPanelNum;
 			}
 
-			// store charges for later use, if requested
-			// Remark: charges from the solve on each conductor are summed up;
-			// this is a simplification, in order not to have to save the charges
-			// for each conductor and use it to discretize differently the geometry
-			// for each solve pass (would not be good for speed improvement)
-			if(m_clsGlobalVars.m_bKeepCharge == true) {
-				// charges
-				// remark: you must modify also the functions CAutoRefine::CopyCharges()
-				// and CAutoRefine::OutputPanelTree(), dividing charge by the panel area,
-				// to work with charge densities
-				for(i=0; i < panelnum; i++) {
-//					m_clsMulthier.m_fGlobalCharges[i] += fabs(charge[i]);
-					m_clsMulthier.m_fGlobalCharges[i] += charge[i];
-				}
-			}
-
 			if(m_clsGlobalVars.m_bOutputCharge == true) {
 				// charges
 				// remark: the using function CAutoRefine::OutputPanelTree() will divide the charge by the panel area,
@@ -1612,9 +1591,9 @@ int CSolveCap::AllocateMemory()
 }
 
 // delete structures
-void CSolveCap::DeallocateMemory(int command, CAutoRefGlobalVars globalVars)
+void CSolveCap::DeallocateMemory(int command)
 {
-	m_clsMulthier.Clean(command, globalVars);
+	m_clsMulthier.Clean(command);
 
 	if(m_pCondCharges != NULL) {
 		delete [] m_pCondCharges;
