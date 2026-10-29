@@ -4832,6 +4832,29 @@ static bool IsPatranNeutralFile(const char *firstLine)
 	              &packet[4], &packet[5], &packet[6], &packet[7], &packet[8]) == 9 && packet[0] == 25;
 }
 
+// a quadrilateral that crosses itself (bow-tie) turns twice one way and twice the other way
+// around the normal of its plane; a convex one turns four times the same way, a concave one
+// three times, and a repeated corner doesn't turn
+static bool IsSelfIntersectingQuad(C3DVector *vertex, const C3DVector &normal)
+{
+	int i, positive, negative;
+	double turn;
+
+	positive = 0;
+	negative = 0;
+	for(i=0; i<4; i++) {
+		turn = DotProd(CrossProd(vertex[(i+1)%4] - vertex[i], vertex[(i+2)%4] - vertex[(i+1)%4]), normal);
+		if(turn > 0.0) {
+			positive++;
+		}
+		else if(turn < 0.0) {
+			negative++;
+		}
+	}
+
+	return positive == 2 && negative == 2;
+}
+
 int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosMap *parentFilePosMap, CAutoRefGlobalVars *globalVars, bool isdiel, C3DVector offset, double outpermRe, double outpermIm,
                                   const char *groupname, double inpermRe, double inpermIm, C3DVector dielrefpoint)
 {
@@ -5224,6 +5247,18 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 				       qvertex[3].x, qvertex[3].y, qvertex[3].z);
 				ErrMsg("         panel definition found at line %d of the input file \"%s\"\n", linenum, fileinname);
 				ErrMsg("         Skipping the panel\n");
+			}
+			// the triangulation of a crossing outline would corrupt memory
+			else if(IsSelfIntersectingQuad(qvertex, plane.m_vecNormal)) {
+				ErrMsg("Error: self-intersecting quadrilateral panel 'Q' found, corner coordinates are:\n");
+				ErrMsg("       (%g,%g,%g) (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n",
+				       qvertex[0].x, qvertex[0].y, qvertex[0].z,
+				       qvertex[1].x, qvertex[1].y, qvertex[1].z,
+				       qvertex[2].x, qvertex[2].y, qvertex[2].z,
+				       qvertex[3].x, qvertex[3].y, qvertex[3].z);
+				ErrMsg("       panel definition found at line %d of the input file \"%s\", aborting\n", linenum, fileinname);
+				ret = FC_FILE_ERROR;
+				break;
 			}
 			else {
 

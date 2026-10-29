@@ -201,6 +201,15 @@ def write_skewed_quad_triangles(directory):
     return path
 
 
+def write_bowtie_quad(directory):
+    """A Q panel whose sides 1-2 and 3-4 cross: two triangles touching at a point."""
+    _write_panels(os.path.join(directory, "bowtie.txt"), "bow-tie",
+                  [("Q", "c", [(0, 0, 0), (2, 2, 0), (2, 0, 0), (0, 1, 0)])])
+    path = os.path.join(directory, "bowtie_quad.lst")
+    _write_list(path, ["C bowtie.txt 1.0 0 0 0"])
+    return path
+
+
 GEOMETRIES = {
     "cube": Geometry(write_cube, 1, {(1, 1): CUBE_FACTOR * FOUR_PI_EPS0 * SIDE}, []),
     "three_cubes": Geometry(write_three_cubes, 3, {}, [((1, 2), (1, 3)), ((2, 2), (3, 3))]),
@@ -212,4 +221,5 @@ GEOMETRIES = {
     "patran_dielectric": Geometry(write_patran_dielectric, 1, {}, []),
     "skewed_quad": Geometry(write_skewed_quad, 1, {}, []),
     "skewed_quad_triangles": Geometry(write_skewed_quad_triangles, 1, {}, []),
+    "bowtie_quad": Geometry(write_bowtie_quad, 1, {}, []),
 }

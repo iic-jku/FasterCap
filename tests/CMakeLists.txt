@@ -96,3 +96,6 @@ endif()
 # a non-planar Q panel is split into the two triangles along its smaller diagonal; without -v,
 # it went to the planar triangulator, 6 % lower
 fastercap_test(skewed_quad skewed_quad 0.01 REFERENCE skewed_quad_triangles)
+# a self-intersecting Q panel: exit code 74 (FC_FILE_ERROR) naming its line; its triangulation
+# used freed memory and crashed
+fastercap_test(bowtie_quad bowtie_quad 0 NO_MATRIX EXIT_CODE 74)
