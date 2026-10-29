@@ -53,9 +53,13 @@
   on an input with more than one link block (more than 2^20 links, see
   `AUTOREFINE_LINK_CHUNK_SIZE`); check both after every change to link storage, loading or
   multiplication.
-- Results differ slightly between platforms, compilers, BLAS libraries and thread counts:
-  compare against analytic values, the in-core run, or an upstream build on the same
-  machine, never against numbers from another platform.
+- One build gives the same matrix for every thread count. Between builds, rounding differs
+  (compiler, `libm`, BLAS summation order), and the refinement turns that into other links,
+  GMRES iterations and `-a` stops: results differ by up to the `-a` tolerance. Compare
+  against analytic values, the in-core run, or an upstream build on the same machine.
+- Exception: the test `plate_same_on_every_platform` (#10) checks a stored matrix on every
+  platform, as FasterCap should compute the same function everywhere. When a change moves
+  its numbers, take the new matrix only if Linux, Windows and macOS CI print the same one.
 
 ## Code
 
