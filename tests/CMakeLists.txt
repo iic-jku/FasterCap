@@ -10,18 +10,37 @@ if(APPLE)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_blas_linkage.cmake)
 endif()
 
+# -bv prints only the version; headless builds started a run without input file instead
+add_test(NAME version COMMAND FasterCap -bv)
+set_tests_properties(version PROPERTIES
+    PASS_REGULAR_EXPRESSION "^FasterCap version [0-9]+\\.[0-9]+\\.[0-9]+"
+    FAIL_REGULAR_EXPRESSION "Running|Error")
+
 find_package(Python3 COMPONENTS Interpreter)
 if(NOT Python3_Interpreter_FOUND)
     message(STATUS "Python 3 not found: no regression tests")
     return()
 endif()
 
-# fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] <FasterCap options>...)
+# fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [INTERRUPT] [NO_MATRIX]
+#                [EXIT_CODE <code>] [REFERENCE <geometry>] <FasterCap options>...)
 function(fastercap_test name geometry tolerance)
-    cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE" "" "")
-    set(out_of_core)
+    cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE;INTERRUPT;NO_MATRIX" "EXIT_CODE;REFERENCE" "")
+    set(flags)
     if(arg_OUT_OF_CORE)
-        set(out_of_core --out-of-core)
+        list(APPEND flags --out-of-core)
+    endif()
+    if(arg_INTERRUPT)
+        list(APPEND flags --interrupt)
+    endif()
+    if(arg_NO_MATRIX)
+        list(APPEND flags --no-matrix)
+    endif()
+    if(DEFINED arg_EXIT_CODE)
+        list(APPEND flags --exit-code ${arg_EXIT_CODE})
+    endif()
+    if(DEFINED arg_REFERENCE)
+        list(APPEND flags --reference ${arg_REFERENCE})
     endif()
     add_test(NAME ${name}
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_capacitance.py
@@ -29,7 +48,7 @@ function(fastercap_test name geometry tolerance)
             --geometry ${geometry}
             --tolerance ${tolerance}
             --workdir ${CMAKE_CURRENT_BINARY_DIR}/${name}
-            ${out_of_core}
+            ${flags}
             -- ${arg_UNPARSED_ARGUMENTS})
     # a hang fails the test instead of blocking the CI job
     set_tests_properties(${name} PROPERTIES TIMEOUT 300)
@@ -56,3 +75,24 @@ fastercap_test(three_cubes_out_of_core three_cubes 0.01 OUT_OF_CORE -m0.005 -d0.
 # run hung after writing past the block element array; C12 = C13 within 0.07 %, symmetric
 # within 0.3 %
 fastercap_test(three_cubes_block_precond three_cubes 0.01 -pb2)
+# dielectric shell: links between dielectric panels and super panels next to them made it 16 %
+# high. The collocation on the dielectric interface converges slowly: with every link direct (and
+# in FastCap2) the input panels give 3.3 % above the analytic value, -a0.01 gives 2.5 %
+fastercap_test(coated_sphere coated_sphere 0.05 -a0.01)
+# -t1e-30 is out of reach of GMRES: exit code 75 (FC_CONVERGENCE_FAILED) with the matrix of the
+# last iteration, as accurate as three_cubes_default
+fastercap_test(three_cubes_not_converged three_cubes 0.01 EXIT_CODE 75 -t1e-30)
+# a triangle with its vertices on a line has no self-potential, the matrix would be NaN: exit
+# code 65 (FC_INVALID_RESULT)
+fastercap_test(degenerate_triangle degenerate_triangle 0 NO_MATRIX EXIT_CODE 65)
+# FasterCap can't read PATRAN neutral files: exit code 74 (FC_FILE_ERROR), not the matrix
+# without the dielectric
+fastercap_test(patran_dielectric patran_dielectric 0 NO_MATRIX EXIT_CODE 74)
+# SIGINT while out-of-core: exit code 125 (FC_USER_BREAK), temporary files deleted; Windows has
+# no SIGINT for a single process
+if(NOT WIN32)
+    fastercap_test(three_cubes_interrupted three_cubes 0 INTERRUPT -m0.005 -d0.5)
+endif()
+# a non-planar Q panel is split into the two triangles along its smaller diagonal; without -v,
+# it went to the planar triangulator, 6 % lower
+fastercap_test(skewed_quad skewed_quad 0.01 REFERENCE skewed_quad_triangles)
