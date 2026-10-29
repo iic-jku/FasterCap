@@ -3166,10 +3166,10 @@ bool CAutoRefine::RefineCriteria(double *panel1crit, double *panel2crit, CAutoSe
 // children depends on the position and orientation of the children, not on the equivalent
 // element and averaged normal of the parent. RefineCriteria() cannot tell: its estimate of the
 // normal component vanishes e.g. between neighbouring patches of a curved surface
-static bool IsNearDielectric(CAutoElement *element1, CAutoElement *element2, double rdist, double rmax)
+static bool IsNearDielectric(CAutoElement *element1, CAutoElement *element2, double rdist, double rmax, double factor)
 {
 	return ((element1->m_ucType & AUTOPANEL_IS_DIEL) == AUTOPANEL_IS_DIEL || (element2->m_ucType & AUTOPANEL_IS_DIEL) == AUTOPANEL_IS_DIEL) &&
-	       rdist < AUTOREFINE_DIEL_SUPERPANEL_DIST * rmax;
+	       rdist < factor * rmax;
 }
 
 // Recursive refinement
@@ -3217,7 +3217,7 @@ int CAutoRefine::RefineMutual(CAutoPanel *panel1, CAutoPanel *panel2)
 		// use different criteria for conductor and dielectric
 		forcerefinement = RefineCriteria(&panel1crit, &panel2crit, panel1, panel2, &dist, rdist, rmax, m_clsGlobalVars.m_dEps);
 
-		if(IsNearDielectric(panel1, panel2, rdist, rmax)) {
+		if(IsNearDielectric(panel1, panel2, rdist, rmax, AUTOREFINE_DIEL_SUPERPANEL_DIST)) {
 			forcerefinement = true;
 		}
 
@@ -3366,7 +3366,7 @@ int CAutoRefine::RefineMutual(CAutoSegment *panel1, CAutoSegment *panel2)
 		// use different criteria for conductor and dielectric
 		forcerefinement = RefineCriteria(&panel1crit, &panel2crit, panel1, panel2, &dist, rdist, rmax, m_clsGlobalVars.m_dEps);
 
-		if(IsNearDielectric(panel1, panel2, rdist, rmax)) {
+		if(IsNearDielectric(panel1, panel2, rdist, rmax, AUTOREFINE_DIEL_SUPERSEGMENT_DIST)) {
 			forcerefinement = true;
 		}
 
