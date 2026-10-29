@@ -10,6 +10,13 @@ if(APPLE)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_blas_linkage.cmake)
 endif()
 
+# unit tests of the solver code; in GUI builds the solver's messages need the GUI application
+if(FASTFIELDSOLVERS_HEADLESS)
+    add_executable(test_potential test_potential.cpp)
+    target_link_libraries(test_potential FasterCapSolver)
+    add_test(NAME potential COMMAND test_potential)
+endif()
+
 # -bv prints only the version; headless builds started a run without input file instead
 add_test(NAME version COMMAND FasterCap -bv)
 set_tests_properties(version PROPERTIES
