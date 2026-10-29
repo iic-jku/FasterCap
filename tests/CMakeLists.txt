@@ -23,9 +23,11 @@ if(NOT Python3_Interpreter_FOUND)
 endif()
 
 # fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [INTERRUPT] [NO_MATRIX]
-#                [EXIT_CODE <code>] [REFERENCE <geometry>] <FasterCap options>...)
+#                [DUMP_INPUT] [OUTPUT_FILES] [EXIT_CODE <code>] [REFERENCE <geometry>]
+#                <FasterCap options>...)
 function(fastercap_test name geometry tolerance)
-    cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE;INTERRUPT;NO_MATRIX" "EXIT_CODE;REFERENCE" "")
+    cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE;INTERRUPT;NO_MATRIX;DUMP_INPUT;OUTPUT_FILES"
+                          "EXIT_CODE;REFERENCE" "")
     set(flags)
     if(arg_OUT_OF_CORE)
         list(APPEND flags --out-of-core)
@@ -35,6 +37,12 @@ function(fastercap_test name geometry tolerance)
     endif()
     if(arg_NO_MATRIX)
         list(APPEND flags --no-matrix)
+    endif()
+    if(arg_DUMP_INPUT)
+        list(APPEND flags --dump-input)
+    endif()
+    if(arg_OUTPUT_FILES)
+        list(APPEND flags --output-files)
     endif()
     if(DEFINED arg_EXIT_CODE)
         list(APPEND flags --exit-code ${arg_EXIT_CODE})
@@ -103,3 +111,17 @@ fastercap_test(bowtie_quad bowtie_quad 0 NO_MATRIX EXIT_CODE 74)
 # segments next to them made it 6.7 % high. The polygons of 256 segments are 0.01 % below the
 # circles; -a0.01 gives +0.24 %, +1.1 % with the 3D distance factor of 2
 fastercap_test(coated_coax coated_coax 0.01 -a0.01)
+# Jacobi preconditioner (-pj): C12 = C13 and C22 = C33 within 0.1 %, symmetric within 0.1 %
+fastercap_test(three_cubes_jacobi three_cubes 0.01 -pj -a0.01)
+# two-levels preconditioner of dimension 16 (-ps16): C12 = C13 within 0.2 %
+fastercap_test(three_cubes_two_levels three_cubes 0.01 -ps16 -a0.01)
+# mesh curvature coefficient (-mc1): the sphere is 0.03 % below its analytic value, as the
+# inscribed polyhedron is 0.3 % below the sphere
+fastercap_test(sphere_curvature sphere 0.01 -a0.01 -mc1)
+# '+' merges two conductors into one: the same panels as one conductor in one file
+fastercap_test(two_cubes_merged two_cubes_merged 0.01 REFERENCE two_cubes -a0.01)
+# the input geometry dumped by -oi gives the same matrix
+fastercap_test(three_cubes_dump_input three_cubes 0.01 DUMP_INPUT -a0.01)
+# -o, -e and -c write the refined panels, the printed matrix and charge densities that add up
+# to the matrix
+fastercap_test(three_cubes_output_files three_cubes 0.01 OUTPUT_FILES -a0.01)

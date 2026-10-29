@@ -17,6 +17,13 @@ With --no-matrix, FasterCap must stop without printing a matrix.
 With --reference, FasterCap runs again on another geometry made of the same panels, and the
 two matrices must agree.
 
+With --dump-input, FasterCap writes the input geometry back (-oi), and the dump must give the
+same matrix.
+
+With --output-files, the run also writes the refined geometry (-o), the matrix (-e) and the
+charge densities (-c): the refined geometry must hold all refined panels, the matrix file the
+printed matrix, and the charges of each excitation must add up to its row of the matrix.
+
 With --interrupt, an out-of-core run gets SIGINT once it has written link chunks: it must stop
 with FC_USER_BREAK and delete its temporary files.
 """
@@ -45,6 +52,8 @@ BLOCK_MBYTES = 24
 OUT_OF_CORE_TOLERANCE = 1e-5
 # the same panels, given differently
 REFERENCE_TOLERANCE = 1e-5
+# files written next to the console output: the same digits, charges with 7 of them
+OUTPUT_TOLERANCE = 1e-5
 # below the CTest timeout, so that a hanging run still reports its output
 RUN_TIMEOUT = 240
 # FC_USER_BREAK
@@ -144,6 +153,88 @@ def check_run(command, returncode, output, geometry, tolerance, exit_code=0, no_
     return rows, errors
 
 
+def panel_files(list_file):
+    """the panel files a list file names in its 'C' lines, in their order"""
+    directory = os.path.dirname(list_file)
+    with open(list_file) as f:
+        return [os.path.join(directory, line.split()[1]) for line in f if line.startswith("C ")]
+
+
+def read_panels(path):
+    """(vertices, value after them) of the T and Q panels of a panel file"""
+    panels = []
+    with open(path) as f:
+        for line in f:
+            fields = line.split()
+            if fields and fields[0] in ("T", "Q"):
+                corners = 3 if fields[0] == "T" else 4
+                values = [float(v) for v in fields[2:]]
+                vertices = [values[3 * k:3 * k + 3] for k in range(corners)]
+                rest = values[3 * corners:]
+                panels.append((vertices, rest[0] if len(rest) == 1 else None))
+    return panels
+
+
+def area(vertices):
+    total = 0.0
+    for k in range(1, len(vertices) - 1):
+        u = [vertices[k][m] - vertices[0][m] for m in range(3)]
+        w = [vertices[k + 1][m] - vertices[0][m] for m in range(3)]
+        total += 0.5 * math.sqrt((u[1] * w[2] - u[2] * w[1]) ** 2 + (u[2] * w[0] - u[0] * w[2]) ** 2
+                                 + (u[0] * w[1] - u[1] * w[0]) ** 2)
+    return total
+
+
+def check_output_files(list_file, output, names, rows):
+    """errors in the files of -o (refined geometry), -e (matrix) and -c (charge densities)"""
+    errors = []
+    base = os.path.splitext(list_file)[0]
+    n = len(rows)
+
+    refined = re.findall(r"Number of panels after refinement: (\d+)", output)
+    refined_file = base + "_ref.lst"
+    if not os.path.exists(refined_file):
+        errors.append("-o: no %s" % os.path.basename(refined_file))
+    else:
+        count = sum(len(read_panels(f)) for f in panel_files(refined_file))
+        if not refined or count != int(refined[-1]):
+            errors.append("-o: %d panels in %s, %s after refinement"
+                          % (count, os.path.basename(refined_file), refined[-1] if refined else "?"))
+
+    matrix_file = base + ".csv"
+    if not os.path.exists(matrix_file):
+        errors.append("-e: no %s" % os.path.basename(matrix_file))
+    else:
+        with open(matrix_file) as f:
+            written = [[float(v) for v in line.split(",")] for line in f if line.strip()]
+        if len(written) != n or any(len(r) != n for r in written):
+            errors.append("-e: %s is not a %d x %d matrix" % (os.path.basename(matrix_file), n, n))
+        else:
+            for i in range(n):
+                for j in range(n):
+                    if relative_difference(written[i][j], rows[i][j]) > OUTPUT_TOLERANCE:
+                        errors.append("-e: C%d%d = %g in the file, %g printed"
+                                      % (i + 1, j + 1, written[i][j], rows[i][j]))
+
+    # FasterCap prints one excitation per row: with conductor i at 1 V, the charge on conductor
+    # j is Cij; <base>_<conductor i>.lst names the panel files of all conductors in their order
+    for i, name in enumerate(names):
+        charge_file = "%s_%s.lst" % (base, name)
+        if not os.path.exists(charge_file):
+            errors.append("-c: no %s" % os.path.basename(charge_file))
+            continue
+        files = panel_files(charge_file)
+        if len(files) != n:
+            errors.append("-c: %s names %d conductors" % (os.path.basename(charge_file), len(files)))
+            continue
+        for j, path in enumerate(files):
+            charge = sum(area(vertices) * density for vertices, density in read_panels(path))
+            if abs(charge - rows[i][j]) > OUTPUT_TOLERANCE * rows[i][i]:
+                errors.append("-c: charge %g on conductor %d with %d at 1 V, C%d%d = %g"
+                              % (charge, j + 1, i + 1, i + 1, j + 1, rows[i][j]))
+    return errors
+
+
 def out_of_core_ratio(fastercap, list_file, options):
     """-f value for blocks of BLOCK_MBYTES, from the memory a probe run reports"""
     command, _, output = run(fastercap, list_file, options + ["-f1e12"])
@@ -211,6 +302,10 @@ def main():
                         help="FasterCap must stop without a capacitance matrix")
     parser.add_argument("--reference", choices=sorted(geometries.GEOMETRIES),
                         help="geometry of the same panels, which must give the same matrix")
+    parser.add_argument("--dump-input", action="store_true",
+                        help="dump the input geometry (-oi), which must give the same matrix")
+    parser.add_argument("--output-files", action="store_true",
+                        help="write refined geometry, matrix and charges (-o -e -c) and check them")
     parser.add_argument("fastercap_args", nargs=argparse.REMAINDER,
                         help="FasterCap options after --, e.g. -- -a0.01")
     args = parser.parse_args()
@@ -229,9 +324,33 @@ def main():
                                                    args.workdir)
         return report(errors, output)
 
-    command, returncode, output = run(args.fastercap, list_file, fastercap_args)
+    output_options = ["-o", "-e", "-c"] if args.output_files else []
+    command, returncode, output = run(args.fastercap, list_file, fastercap_args + output_options)
     rows, errors = check_run(command, returncode, output, geometry, args.tolerance,
                              args.exit_code, args.no_matrix)
+
+    if args.output_files and not errors:
+        names, _ = parse_last_matrix(output)
+        errors += check_output_files(list_file, output, names, rows)
+
+    if args.dump_input and not errors:
+        command, returncode, dump_output = run(args.fastercap, list_file, fastercap_args + ["-oi"])
+        dump_file = os.path.splitext(list_file)[0] + "_dump.lst"
+        if returncode != 0 or parse_last_matrix(dump_output)[0] is not None:
+            errors.append("-oi: exit code %s, expected 0 without a matrix" % returncode)
+        elif not os.path.exists(dump_file):
+            errors.append("-oi: no %s" % os.path.basename(dump_file))
+        else:
+            command, returncode, dump_output = run(args.fastercap, dump_file, fastercap_args)
+            dump_rows, dump_errors = check_run(command, returncode, dump_output, geometry,
+                                               args.tolerance)
+            errors += ["dump: " + e for e in dump_errors]
+            if not dump_errors:
+                for i, (row, dump_row) in enumerate(zip(rows, dump_rows)):
+                    for j, (value, dump_value) in enumerate(zip(row, dump_row)):
+                        if relative_difference(value, dump_value) > REFERENCE_TOLERANCE:
+                            errors.append("dump: C%d%d = %g, input gives %g"
+                                          % (i + 1, j + 1, dump_value, value))
 
     if args.out_of_core and not errors:
         ratio, error = out_of_core_ratio(args.fastercap, list_file, fastercap_args)

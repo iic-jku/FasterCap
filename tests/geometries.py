@@ -118,6 +118,27 @@ def write_three_cubes(directory):
     return path
 
 
+def write_two_cubes(directory):
+    """Two cubes beside each other along x, one conductor in one panel file."""
+    pitch = SIDE + GAP
+    second = [(kind, name, [(x + pitch, y, z) for x, y, z in vertices])
+              for kind, name, vertices in cube_panels("c", SIDE)]
+    _write_panels(os.path.join(directory, "two_cubes.txt"), "two cubes",
+                  cube_panels("c", SIDE) + second)
+    path = os.path.join(directory, "two_cubes.lst")
+    _write_list(path, ["C two_cubes.txt 1.0 0 0 0"])
+    return path
+
+
+def write_two_cubes_merged(directory):
+    """The two cubes as two conductors, merged into one by '+'."""
+    _write_panels(os.path.join(directory, "cube.txt"), "cube", cube_panels("c", SIDE))
+    path = os.path.join(directory, "two_cubes_merged.lst")
+    _write_list(path, ["C cube.txt 1.0 0 0 0 +",
+                       "C cube.txt 1.0 %g 0 0" % (SIDE + GAP)])
+    return path
+
+
 def write_sphere(directory):
     """1280 triangles inscribed in the sphere: about 0.3 % below its capacitance."""
     _write_panels(os.path.join(directory, "sphere.txt"), "sphere",
@@ -248,6 +269,8 @@ COATED_COAX_C = 2.0 * math.pi * EPS0 / (math.log(COAX_COAT_RADIUS / RADIUS) / CO
 GEOMETRIES = {
     "cube": Geometry(write_cube, 1, {(1, 1): CUBE_FACTOR * FOUR_PI_EPS0 * SIDE}, []),
     "three_cubes": Geometry(write_three_cubes, 3, {}, [((1, 2), (1, 3)), ((2, 2), (3, 3))]),
+    "two_cubes": Geometry(write_two_cubes, 1, {}, []),
+    "two_cubes_merged": Geometry(write_two_cubes_merged, 1, {}, []),
     "sphere": Geometry(write_sphere, 1, {(1, 1): FOUR_PI_EPS0 * RADIUS}, []),
     "concentric_spheres": Geometry(write_concentric_spheres, 2,
                                    concentric_spheres_analytic(INNER_RADIUS, OUTER_RADIUS), []),
