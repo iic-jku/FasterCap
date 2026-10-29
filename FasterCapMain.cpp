@@ -619,7 +619,7 @@ void FasterCapFrame::LaunchFasterCap(CAutoRefGlobalVars globalVars)
 	wxMutexError retMutex;
 
 	// update the frame title
-	SetLabel(globalVars.m_sFileIn + wxT(" - FasterCap"));
+	SetLabel(wxString(globalVars.m_sFileIn) + wxT(" - FasterCap"));
 
 	// set the global vars to be used by the thread
 	m_clsGlobalVars = globalVars;
