@@ -51,6 +51,8 @@ class RunDialog: public wxDialog
 
         CAutoRefGlobalVars GetGlobalVars();
         void SetGlobalVarsFileIn(std::string fileIn);
+        // keeps the dialog open, with a message, while a number field is out of its range
+        virtual bool Validate();
 
 		//(*Declarations(RunDialog)
 		wxTextCtrl* TextCtrl_EPS_Ratio;
@@ -134,6 +136,7 @@ class RunDialog: public wxDialog
         void OnReset(wxCommandEvent& event);
         void CopyVarsToDialog();
         void CopyDialogToVars();
+        bool ReadNumberFields(CAutoRefGlobalVars &globalVars, wxString &errMsg);
         void Reset();
 
         CAutoRefGlobalVars m_clsGlobalVars;
