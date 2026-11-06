@@ -174,10 +174,13 @@ int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
 
 
 // reads the value of a numeric option from 'valueStr' into 'value';
-// returns 'true' if it is no finite number from 'min' (excluded unless 'minIncluded') to 'max' (excluded)
+// returns 'true' if it is no finite number from 'min' (excluded unless 'minIncluded') to 'max' (excluded),
+// or if other characters follow the number
 static bool BadNumber(const char *valueStr, double *value, double min, bool minIncluded, double max)
 {
-	if(sscanf(valueStr, "%lf", value) != 1 || std::isfinite(*value) == false) {
+	int length;
+
+	if(sscanf(valueStr, "%lf%n", value, &length) != 1 || valueStr[length] != '\0' || std::isfinite(*value) == false) {
 		return true;
 	}
 	return *value < min || (*value == min && minIncluded == false) || *value >= max;
