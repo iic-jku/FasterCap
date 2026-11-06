@@ -33,6 +33,9 @@ printed matrix, and the charges of each excitation must add up to its row of the
 
 With --interrupt, an out-of-core run gets SIGINT once it has written link chunks: it must stop
 with FC_USER_BREAK and delete its temporary files.
+
+With --long-path, the list file goes below directories that make its path that long, FasterCap
+gets that path, and its log must name it.
 """
 
 import argparse
@@ -133,8 +136,9 @@ def check_matrix(rows, geometry, tolerance):
     return errors
 
 
-def run(fastercap, list_file, options):
-    command = [os.path.abspath(fastercap), os.path.basename(list_file), "-b"] + options
+def run(fastercap, list_file, options, full_path=False):
+    command = [os.path.abspath(fastercap), list_file if full_path else os.path.basename(list_file),
+               "-b"] + options
     try:
         result = subprocess.run(command, cwd=os.path.dirname(list_file), stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, universal_newlines=True,
@@ -261,6 +265,24 @@ def out_of_core_ratio(fastercap, list_file, options):
     return int(free.group(1)) / float(BLOCK_MBYTES), None
 
 
+def long_directory(directory, file_name, length):
+    """a directory below 'directory' in which 'file_name' has an absolute path of 'length' characters"""
+    directory = os.path.abspath(directory)
+    missing = length - len(os.path.join(directory, file_name))
+    while missing > 0:
+        # components of up to 200 characters, without leaving a single one over
+        part = min(200, missing - 1)
+        if missing - (part + 1) == 1:
+            part -= 1
+        if part < 1:
+            break
+        directory = os.path.join(directory, "d" * part)
+        missing -= part + 1
+    if missing != 0:
+        raise ValueError("no path of %d characters for %s below %s" % (length, file_name, directory))
+    return directory
+
+
 def interrupt_out_of_core(fastercap, list_file, options, ratio, workdir):
     """errors and output of an out-of-core run interrupted after writing two link chunks"""
     tmpdir = os.path.join(workdir, "tmp")
@@ -322,6 +344,8 @@ def main():
                         help="dump the input geometry (-oi), which must give the same matrix")
     parser.add_argument("--output-files", action="store_true",
                         help="write refined geometry, matrix and charges (-o -e -c) and check them")
+    parser.add_argument("--long-path", type=int, metavar="LENGTH",
+                        help="give FasterCap the list file by a path of this many characters")
     parser.add_argument("fastercap_args", nargs=argparse.REMAINDER,
                         help="FasterCap options after --, e.g. -- -a0.01")
     args = parser.parse_args()
@@ -329,7 +353,11 @@ def main():
 
     geometry = geometries.GEOMETRIES[args.geometry]
     os.makedirs(args.workdir, exist_ok=True)
-    list_file = os.path.abspath(geometry.write(args.workdir))
+    workdir = args.workdir
+    if args.long_path:
+        workdir = long_directory(args.workdir, args.geometry + ".lst", args.long_path)
+        os.makedirs(workdir, exist_ok=True)
+    list_file = os.path.abspath(geometry.write(workdir))
 
     if args.interrupt:
         ratio, error = out_of_core_ratio(args.fastercap, list_file, fastercap_args)
@@ -341,9 +369,12 @@ def main():
         return report(errors, output)
 
     output_options = ["-o", "-e", "-c"] if args.output_files else []
-    command, returncode, output = run(args.fastercap, list_file, fastercap_args + output_options)
+    command, returncode, output = run(args.fastercap, list_file, fastercap_args + output_options,
+                                      full_path=bool(args.long_path))
     rows, errors = check_run(command, returncode, output, geometry, args.tolerance,
                              args.exit_code, args.no_matrix)
+    if args.long_path and "Input file: %s\n" % list_file not in output:
+        errors.append("the log doesn't name the input file, %d characters" % len(list_file))
 
     if args.names and not errors:
         names, _ = parse_last_matrix(output)

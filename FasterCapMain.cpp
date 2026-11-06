@@ -967,7 +967,6 @@ int LogMsg(const char *fmt,...)
 	wxString msg;
 	int ret;
 	va_list arg_ptr;
-	char buf[FCM_LOG_BUF_SIZE];
 
     // The reason for using vsnprintf() instead of wxString::Format() or
     // wxString::PrintfV() is that, since we passed variable args,
@@ -985,10 +984,8 @@ int LogMsg(const char *fmt,...)
     // (as per wxWidgets explanation in a forum thread)
 
 	va_start(arg_ptr, fmt);
-    ret = vsnprintf(buf, FCM_LOG_BUF_SIZE, fmt, arg_ptr);
+    ret = FormatMsg(msg, fmt, arg_ptr);
 	va_end(arg_ptr);
-
-    msg = buf;
 
 	// if PrintfV() returns error
 	if(ret < 0) {
@@ -1022,13 +1019,10 @@ int ErrMsg(const char *fmt,...)
 	wxString msg;
 	int ret;
 	va_list arg_ptr;
-	char buf[FCM_LOG_BUF_SIZE];
 
 	va_start(arg_ptr, fmt);
-    ret = vsnprintf(buf, FCM_LOG_BUF_SIZE, fmt, arg_ptr);
+    ret = FormatMsg(msg, fmt, arg_ptr);
 	va_end(arg_ptr);
-
-    msg = buf;
 
 	// if PrintfV() returns error
 	if(ret < 0) {
