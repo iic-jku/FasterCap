@@ -27,8 +27,7 @@
 #include "Solver/SolveCapacitance.h"
 
 #include <csignal>
-
-#define CMDLINEPARSER_MAX_INPUT_STR_LEN     4094
+#include <vector>
 
 // Ctrl-C or kill: stop the run as the stop button of the GUI does, so that it deletes its
 // out-of-core temporary files; a second signal terminates at once
@@ -175,7 +174,9 @@ int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
 // returns 'true' if errors in the parsing
 bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &globalVars, wxString &errMsg)
 {
-	char argStr[CMDLINEPARSER_MAX_INPUT_STR_LEN], *cmdStr;
+	// no argument is longer than the command line
+	std::vector<char> argBuffer(strlen(commandStr) + 1);
+	char *argStr = argBuffer.data(), *cmdStr;
 	int res, skip;
 	bool cmderr;
 
@@ -349,11 +350,13 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 
 // Special version of sscanf which handles also file names with spaces inside,
 // provided they are surrounded by '"'.
-// Note that this routine is specialized to retrieve only strings
+// Note that this routine is specialized to retrieve only strings;
+// 'substr' must hold strlen(buffer) + 1 characters
 int FasterCapConsole::getSubstring(const char *buffer, char *substr, int *skip)
 {
 	int res, openPos, deltaClosePos, startPos;
-	char *openPosPtr, *closePosPtr, tmpStr[256];
+	std::vector<char> tmpBuffer(strlen(buffer) + 1);
+	char *openPosPtr, *closePosPtr, *tmpStr = tmpBuffer.data();
 
 	substr[0] = '\0';
 

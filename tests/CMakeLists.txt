@@ -34,10 +34,11 @@ endif()
 
 # fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [INTERRUPT] [NO_MATRIX]
 #                [DUMP_INPUT] [OUTPUT_FILES] [EXIT_CODE <code>] [REFERENCE <geometry>]
-#                [NAMES <name,...>] [SAME_AS <other options>] <FasterCap options>...)
+#                [NAMES <name,...>] [SAME_AS <other options>] [LONG_PATH <length>]
+#                <FasterCap options>...)
 function(fastercap_test name geometry tolerance)
     cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE;INTERRUPT;NO_MATRIX;DUMP_INPUT;OUTPUT_FILES"
-                          "EXIT_CODE;REFERENCE;NAMES;SAME_AS" "")
+                          "EXIT_CODE;REFERENCE;NAMES;SAME_AS;LONG_PATH" "")
     set(flags)
     if(arg_OUT_OF_CORE)
         list(APPEND flags --out-of-core)
@@ -65,6 +66,9 @@ function(fastercap_test name geometry tolerance)
     endif()
     if(DEFINED arg_SAME_AS)
         list(APPEND flags "--same-as=${arg_SAME_AS}")
+    endif()
+    if(DEFINED arg_LONG_PATH)
+        list(APPEND flags --long-path ${arg_LONG_PATH})
     endif()
     add_test(NAME ${name}
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_capacitance.py
@@ -155,6 +159,11 @@ fastercap_test(coated_sphere_local_reference coated_sphere_local_reference 0.05 
 fastercap_test(coated_sphere_lossy coated_sphere_lossy 0.05 -a0.01)
 # -r, -i and -v only print more: the same matrix
 fastercap_test(three_cubes_logging three_cubes 0.01 SAME_AS -a0.01 -a0.01 -r -i -v)
+# a list file path of 1015 characters: one over 255 overflowed the command line parser (SIGABRT),
+# one over about 1010 cut the log line naming it; Windows limits paths to 260 characters
+if(NOT WIN32)
+    fastercap_test(three_cubes_long_path three_cubes 0.01 LONG_PATH 1015 -a0.01)
+endif()
 # options removed in #31 stop with exit code 64 (FC_COMMAND_LINE_ERROR) instead of being ignored
 # (-s, -kc, -km) or hanging (-ph)
 foreach(option -s -s0.1 -kc -km -ph -phs1 -phe0.1 -pht0.5)
