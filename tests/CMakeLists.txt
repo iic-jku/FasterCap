@@ -160,3 +160,13 @@ fastercap_test(three_cubes_logging three_cubes 0.01 SAME_AS -a0.01 -a0.01 -r -i 
 foreach(option -s -s0.1 -kc -km -ph -phs1 -phe0.1 -pht0.5)
     fastercap_test(removed_option${option} three_cubes 0 NO_MATRIX EXIT_CODE 64 ${option})
 endforeach()
+# option values out of range stop with exit code 64 (FC_COMMAND_LINE_ERROR) instead of running
+# without end (-a0, -m0), crashing (-m-1), taking an unconverged GMRES solution (-ainf, -t1),
+# skipping refinement (-mnan, -dnan) or going out-of-core without memory for a chunk (-finf)
+foreach(option -a0 -a-1 -a1 -anan -ainf -t0 -t1 -tnan -m0 -m-1 -mnan -mc0.5 -mcinf -d0 -dnan -dinf -f-1 -fnan -finf)
+    fastercap_test(out_of_range_option${option} three_cubes 0 NO_MATRIX EXIT_CODE 64 ${option})
+endforeach()
+# so do numbers followed by other characters, which were read as the number alone
+foreach(option -a0.01x -t0.01x -m0.1x -mc2x -d0.5x -f2GB)
+    fastercap_test(trailing_characters_option${option} three_cubes 0 NO_MATRIX EXIT_CODE 64 ${option})
+endforeach()
