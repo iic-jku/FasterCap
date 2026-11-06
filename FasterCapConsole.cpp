@@ -26,6 +26,7 @@
 
 #include "Solver/SolveCapacitance.h"
 
+#include <cmath>
 #include <csignal>
 
 #define CMDLINEPARSER_MAX_INPUT_STR_LEN     4094
@@ -172,6 +173,32 @@ int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
 }
 
 
+// reads the value of a numeric option from 'valueStr' into 'value';
+// returns 'true' if it is no finite number from 'min' (excluded unless 'minIncluded') to 'max' (excluded),
+// or if other characters follow the number
+static bool BadNumber(const char *valueStr, double *value, double min, bool minIncluded, double max)
+{
+	int length;
+
+	if(sscanf(valueStr, "%lf%n", value, &length) != 1 || valueStr[length] != '\0' || std::isfinite(*value) == false) {
+		return true;
+	}
+	return *value < min || (*value == min && minIncluded == false) || *value >= max;
+}
+
+// reads the value of an integer option from 'valueStr' into 'value';
+// returns 'true' if it is no whole number from 'min' to 'max' (both included), as BadNumber() checks it
+static bool BadInteger(const char *valueStr, unsigned int *value, unsigned int min, unsigned int max)
+{
+	double number;
+
+	if(BadNumber(valueStr, &number, min, true, max + 1.0) == true || number != std::floor(number)) {
+		return true;
+	}
+	*value = (unsigned int)number;
+	return false;
+}
+
 // returns 'true' if errors in the parsing
 bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &globalVars, wxString &errMsg)
 {
@@ -209,30 +236,30 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 			// '-mc' is the curvature coefficient for gradient meshing near sharp edges
 			if(argStr[1] == 'm') {
 				if(argStr[2] == 'c') {
-					if(sscanf(&(argStr[3]), "%lf", &(globalVars.m_dMeshCurvCoeff)) != 1) {
+					if(BadNumber(&(argStr[3]), &(globalVars.m_dMeshCurvCoeff), 1.0, true, HUGE_VAL) == true) {
 						cmderr = true;
-						errMsg = wxString::Format(wxT("%s: bad mesh curvature coefficient '%s'\n"), commandStr, &argStr[2]);
+						errMsg = wxString::Format(wxT("%s: bad mesh curvature coefficient '%s', must be a number >= 1\n"), commandStr, &argStr[3]);
 					}
 				}
-				else if(sscanf(&(argStr[2]), "%lf", &(globalVars.m_dMeshEps)) != 1) {
+				else if(BadNumber(&(argStr[2]), &(globalVars.m_dMeshEps), 0.0, false, HUGE_VAL) == true) {
 					cmderr = true;
-					errMsg = wxString::Format(wxT("%s: bad mesh relative refinement value '%s'\n"), commandStr, &argStr[3]);
+					errMsg = wxString::Format(wxT("%s: bad mesh relative refinement value '%s', must be a number > 0\n"), commandStr, &argStr[2]);
 				}
 			}
 
 			// '-d' is direct potential interaction coefficient to mesh refinement ratio
 			else if(argStr[1] == 'd') {
-				if(sscanf(&(argStr[2]), "%lf", &(globalVars.m_dEpsRatio)) != 1) {
+				if(BadNumber(&(argStr[2]), &(globalVars.m_dEpsRatio), 0.0, false, HUGE_VAL) == true) {
 					cmderr = true;
-					errMsg = wxString::Format(wxT("%s: bad direct potential interaction coefficient to mesh refinement ratio value '%s'\n"), commandStr, &argStr[2]);
+					errMsg = wxString::Format(wxT("%s: bad direct potential interaction coefficient to mesh refinement ratio value '%s', must be a number > 0\n"), commandStr, &argStr[2]);
 				}
 			}
 
 			// '-f' is Out-Of-Core free memory to link memory condition (0 = don't go OOC)
 			else if(argStr[1] == 'f') {
-				if(sscanf(&(argStr[2]), "%lf", &(globalVars.m_dOutOfCoreRatio)) != 1) {
+				if(BadNumber(&(argStr[2]), &(globalVars.m_dOutOfCoreRatio), 0.0, true, HUGE_VAL) == true) {
 					cmderr = true;
-					errMsg = wxString::Format(wxT("%s: Out-Of-Core free memory to link memory condition '%s'\n"), commandStr, &argStr[2]);
+					errMsg = wxString::Format(wxT("%s: bad Out-Of-Core free memory to link memory condition '%s', must be a number >= 0\n"), commandStr, &argStr[2]);
 				}
 			}
 
@@ -246,16 +273,18 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 				}
 				else if (argStr[2] == 'B' || argStr[2] == 'b') {
 					globalVars.m_ucPrecondType |= AUTOREFINE_PRECOND_BLOCK;
-					if(sscanf(&(argStr[3]), "%u", &(globalVars.m_uiBlockPreSize)) != 1) {
+					if(BadInteger(&(argStr[3]), &(globalVars.m_uiBlockPreSize), SOLVE_MIN_BLOCK_PRECOND_NUM, SOLVE_MAX_BLOCK_PRECOND_NUM) == true) {
 						cmderr = true;
-						errMsg = wxString::Format(wxT("%s: bad preconditioner dimension '%s'\n"), commandStr, &argStr[3]);
+						errMsg = wxString::Format(wxT("%s: bad preconditioner dimension '%s', must be a whole number from %d to %d\n"), commandStr, &argStr[3],
+						                          SOLVE_MIN_BLOCK_PRECOND_NUM, SOLVE_MAX_BLOCK_PRECOND_NUM);
 					}
 				}
 				else if (argStr[2] == 'S' || argStr[2] == 's') {
 					globalVars.m_ucPrecondType |= AUTOREFINE_PRECOND_SUPER;
-					if(sscanf(&(argStr[3]), "%u", &(globalVars.m_uiSuperPreDim)) != 1) {
+					if(BadInteger(&(argStr[3]), &(globalVars.m_uiSuperPreDim), SOLVE_MIN_SUPER_PRECOND_NUM, SOLVE_MAX_SUPER_PRECOND_NUM) == true) {
 						cmderr = true;
-						errMsg = wxString::Format(wxT("%s: bad preconditioner dimension '%s'\n"), commandStr, &argStr[3]);
+						errMsg = wxString::Format(wxT("%s: bad preconditioner dimension '%s', must be a whole number from %d to %d\n"), commandStr, &argStr[3],
+						                          SOLVE_MIN_SUPER_PRECOND_NUM, SOLVE_MAX_SUPER_PRECOND_NUM);
 					}
 				}
 				else {
@@ -286,9 +315,9 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 
 			// '-t' is GMRES tolerance to stop iteration
 			else if(argStr[1] == 't') {
-				if(sscanf(&(argStr[2]), "%lf", &(globalVars.m_dGmresTol)) != 1) {
+				if(BadNumber(&(argStr[2]), &(globalVars.m_dGmresTol), 0.0, false, 1.0) == true) {
 					cmderr = true;
-					errMsg = wxString::Format(wxT("%s: bad GMRES iteration tolerance '%s'\n"), commandStr, &argStr[2]);
+					errMsg = wxString::Format(wxT("%s: bad GMRES iteration tolerance '%s', must be a number > 0 and < 1\n"), commandStr, &argStr[2]);
 				}
 			}
 
@@ -321,9 +350,9 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 				}
 				else {
 					globalVars.m_bAuto = true;
-					if(sscanf(&(argStr[2]), "%lf", &(globalVars.m_dAutoMaxErr)) != 1) {
+					if(BadNumber(&(argStr[2]), &(globalVars.m_dAutoMaxErr), 0.0, false, 1.0) == true) {
 						cmderr = true;
-						errMsg = wxString::Format(wxT("%s: bad max error value for auto option'%s'\n"), commandStr, &argStr[2]);
+						errMsg = wxString::Format(wxT("%s: bad max error value for auto option '%s', must be a number > 0 and < 1\n"), commandStr, &argStr[2]);
 					}
 				}
 			}
