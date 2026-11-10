@@ -185,6 +185,19 @@ static bool BadNumber(const char *valueStr, double *value, double min, bool minI
 	return *value < min || (*value == min && minIncluded == false) || *value >= max;
 }
 
+// reads the value of an integer option from 'valueStr' into 'value';
+// returns 'true' if it is no whole number from 'min' to 'max' (both included), as BadNumber() checks it
+static bool BadInteger(const char *valueStr, unsigned int *value, unsigned int min, unsigned int max)
+{
+	double number;
+
+	if(BadNumber(valueStr, &number, min, true, max + 1.0) == true || number != std::floor(number)) {
+		return true;
+	}
+	*value = (unsigned int)number;
+	return false;
+}
+
 // returns 'true' if errors in the parsing
 bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &globalVars, wxString &errMsg)
 {
@@ -261,16 +274,18 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 				}
 				else if (argStr[2] == 'B' || argStr[2] == 'b') {
 					globalVars.m_ucPrecondType |= AUTOREFINE_PRECOND_BLOCK;
-					if(sscanf(&(argStr[3]), "%u", &(globalVars.m_uiBlockPreSize)) != 1) {
+					if(BadInteger(&(argStr[3]), &(globalVars.m_uiBlockPreSize), SOLVE_MIN_BLOCK_PRECOND_NUM, SOLVE_MAX_BLOCK_PRECOND_NUM) == true) {
 						cmderr = true;
-						errMsg = wxString::Format(wxT("%s: bad preconditioner dimension '%s'\n"), commandStr, &argStr[3]);
+						errMsg = wxString::Format(wxT("%s: bad preconditioner dimension '%s', must be a whole number from %d to %d\n"), commandStr, &argStr[3],
+						                          SOLVE_MIN_BLOCK_PRECOND_NUM, SOLVE_MAX_BLOCK_PRECOND_NUM);
 					}
 				}
 				else if (argStr[2] == 'S' || argStr[2] == 's') {
 					globalVars.m_ucPrecondType |= AUTOREFINE_PRECOND_SUPER;
-					if(sscanf(&(argStr[3]), "%u", &(globalVars.m_uiSuperPreDim)) != 1) {
+					if(BadInteger(&(argStr[3]), &(globalVars.m_uiSuperPreDim), SOLVE_MIN_SUPER_PRECOND_NUM, SOLVE_MAX_SUPER_PRECOND_NUM) == true) {
 						cmderr = true;
-						errMsg = wxString::Format(wxT("%s: bad preconditioner dimension '%s'\n"), commandStr, &argStr[3]);
+						errMsg = wxString::Format(wxT("%s: bad preconditioner dimension '%s', must be a whole number from %d to %d\n"), commandStr, &argStr[3],
+						                          SOLVE_MIN_SUPER_PRECOND_NUM, SOLVE_MAX_SUPER_PRECOND_NUM);
 					}
 				}
 				else {

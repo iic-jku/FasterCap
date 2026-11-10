@@ -179,3 +179,8 @@ endforeach()
 foreach(option -a0.01x -t0.01x -m0.1x -mc2x -d0.5x -f2GB)
     fastercap_test(trailing_characters_option${option} three_cubes 0 NO_MATRIX EXIT_CODE 64 ${option})
 endforeach()
+# and preconditioner dimensions that are no whole numbers in the range CSolveCap::Run() raised or
+# lowered them to with a warning, e.g. -1, which was read as 4294967295
+foreach(option -ps-1 -ps15 -ps4097 -ps16.5 -ps16x -pb-1 -pb1 -pb129 -pb2x)
+    fastercap_test(out_of_range_option${option} three_cubes 0 NO_MATRIX EXIT_CODE 64 ${option})
+endforeach()
