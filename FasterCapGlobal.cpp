@@ -24,12 +24,32 @@
 
 #include "FasterCapGlobal.h"
 
+#include <vector>
+
 #ifndef FCG_HEADLESS
     #include <wx/msgdlg.h>
 #endif // !FCG_HEADLESS
 
 // signals FasterCap to abort simulation and start waiting again for commands
 volatile bool g_bFCContinue = true;
+
+int FormatMsg(wxString &msg, const char *fmt, va_list args)
+{
+	va_list argsCopy;
+	int ret;
+
+	// the first pass only measures the message
+	va_copy(argsCopy, args);
+	ret = vsnprintf(NULL, 0, fmt, argsCopy);
+	va_end(argsCopy);
+	if(ret >= 0) {
+		std::vector<char> buf(ret + 1);
+		ret = vsnprintf(buf.data(), buf.size(), fmt, args);
+		msg = buf.data();
+	}
+
+	return ret;
+}
 
 #ifdef DEBUG_LOG_ENABLE
 
@@ -103,7 +123,6 @@ int LogMsg(const char *fmt,...)
 	wxString msg;
 	int ret;
 	va_list arg_ptr;
-	char buf[FCM_LOG_BUF_SIZE];
 
     // The reason for using vsnprintf() instead of wxString::Format() or
     // wxString::PrintfV() is that, since we passed variable args,
@@ -121,10 +140,8 @@ int LogMsg(const char *fmt,...)
     // (as per wxWidgets explanation in a forum thread)
 
 	va_start(arg_ptr, fmt);
-    ret = vsnprintf(buf, FCM_LOG_BUF_SIZE, fmt, arg_ptr);
+    ret = FormatMsg(msg, fmt, arg_ptr);
 	va_end(arg_ptr);
-
-    msg = buf;
 
 	// if PrintfV() returns error
 	if(ret < 0) {
@@ -142,13 +159,10 @@ int ErrMsg(const char *fmt,...)
 	wxString msg;
 	int ret;
 	va_list arg_ptr;
-	char buf[FCM_LOG_BUF_SIZE];
 
 	va_start(arg_ptr, fmt);
-    ret = vsnprintf(buf, FCM_LOG_BUF_SIZE, fmt, arg_ptr);
+    ret = FormatMsg(msg, fmt, arg_ptr);
 	va_end(arg_ptr);
-
-    msg = buf;
 
 	// if PrintfV() returns error
 	if(ret < 0) {

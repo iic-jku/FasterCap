@@ -74,8 +74,9 @@
 #define FCW_BLACK   1
 #define FCW_RED     2
 
-// temp buffer for LogMsg() and ErrMsg()
-#define FCM_LOG_BUF_SIZE    1024
+// formats the message of LogMsg() and ErrMsg(), of any length, as vsnprintf() does;
+// returns its length, or a negative value on error
+int FormatMsg(wxString &msg, const char *fmt, va_list args);
 
 
 #ifndef FCG_HEADLESS
