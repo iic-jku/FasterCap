@@ -25,6 +25,10 @@
 #include "wx_pch.h"
 #include "RunDialog.h"
 
+#include <wx/msgdlg.h>
+
+#include "FasterCapConsole.h"
+
 #ifndef WX_PRECOMP
 	//(*InternalHeadersPCH(RunDialog)
 	#include <wx/intl.h>
@@ -306,20 +310,55 @@ void RunDialog::CopyVarsToDialog()
 	CheckBox_Dump_Geometry->SetValue(m_clsGlobalVars.m_bDumpInputGeo);
 }
 
+// reads the number fields into 'globalVars' as the command line options they stand for, with their ranges;
+// returns 'true' if one is out of its range, with a message saying so in 'errMsg'
+bool RunDialog::ReadNumberFields(CAutoRefGlobalVars &globalVars, wxString &errMsg)
+{
+	const struct {
+		const char *option;
+		wxTextCtrl *field;
+	} fields[] = {
+		{"a", TextCtrl_Automatic_Error},
+		{"mc", TextCtrl_Curvature},
+		{"m", TextCtrl_MeshEps},
+		{"d", TextCtrl_EPS_Ratio},
+		{"f", TextCtrl_Autorefine_Out_of_Core},
+		{"t", TextCtrl_GmresTol},
+		{"ps", TextCtrl_Dim_Precond_Two_Levels}
+	};
+	size_t i;
+
+	for(i = 0; i < sizeof(fields) / sizeof(fields[0]); i++) {
+		if(FasterCapConsole::ParseOptionValue(fields[i].option, (const char*)fields[i].field->GetValue(), globalVars, errMsg) == true) {
+			errMsg = wxString::Format(wxT("-%s: %s"), fields[i].option, errMsg);
+			return true;
+		}
+	}
+	return false;
+}
+
+bool RunDialog::Validate()
+{
+	CAutoRefGlobalVars globalVars = m_clsGlobalVars;
+	wxString errMsg;
+
+	if(ReadNumberFields(globalVars, errMsg) == true) {
+		wxMessageBox(errMsg, _("Run"), wxOK | wxICON_ERROR, this);
+		return false;
+	}
+	return wxDialog::Validate();
+}
+
 void RunDialog::CopyDialogToVars()
 {
-    unsigned long tmpULong;
+    wxString errMsg;
 
     m_clsGlobalVars.m_sFileIn = TextCtrl_InputFileName->GetValue();
 
     m_clsGlobalVars.m_bAuto = CheckBox_AutoSettings->GetValue();
     m_clsGlobalVars.m_bAutoPrecond = CheckBox_Auto_Precond->GetValue();
-    TextCtrl_Automatic_Error->GetValue().ToDouble(&m_clsGlobalVars.m_dAutoMaxErr);
-    TextCtrl_Curvature->GetValue().ToDouble(&m_clsGlobalVars.m_dMeshCurvCoeff);
-    TextCtrl_MeshEps->GetValue().ToDouble(&m_clsGlobalVars.m_dMeshEps);
-    TextCtrl_EPS_Ratio->GetValue().ToDouble(&m_clsGlobalVars.m_dEpsRatio);
-    TextCtrl_Autorefine_Out_of_Core->GetValue().ToDouble(&m_clsGlobalVars.m_dOutOfCoreRatio);
-    TextCtrl_GmresTol->GetValue().ToDouble(&m_clsGlobalVars.m_dGmresTol);
+    // Validate() checked them when the dialog was closed with 'Run'
+    ReadNumberFields(m_clsGlobalVars, errMsg);
 	if(CheckBox_Precond_Jacobi->GetValue() == true) {
 		m_clsGlobalVars.m_ucPrecondType |= AUTOREFINE_PRECOND_JACOBI;
 	}
@@ -332,8 +371,6 @@ void RunDialog::CopyDialogToVars()
 	else {
 		m_clsGlobalVars.m_ucPrecondType &= (~AUTOREFINE_PRECOND_SUPER);
 	}
-	TextCtrl_Dim_Precond_Two_Levels->GetValue().ToULong(&tmpULong);
-	m_clsGlobalVars.m_uiSuperPreDim = (unsigned int) tmpULong;
 	m_clsGlobalVars.m_bOutputCharge = CheckBox_Output_Charge->GetValue();
 	m_clsGlobalVars.m_bOutputCapMtx = CheckBox_Output_Capacitance->GetValue();
 	m_clsGlobalVars.m_bDumpResidual = CheckBox_Dump_Residual->GetValue();

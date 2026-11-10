@@ -37,6 +37,9 @@ class FasterCapConsole
         int main(int& argc, wxChar **argv, char bOption='\0');
 #endif // FCG_HEADLESS        int main(int& argc, wxChar **argv, char bOption = '\0');
         bool ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &globalVars, wxString &errMsg);
+        // reads the value of the numeric option '-<option>', e.g. "a" or "mc", into 'globalVars';
+        // returns 'true' if it is out of its range, with a message saying so in 'errMsg'
+        static bool ParseOptionValue(const char *option, const char *valueStr, CAutoRefGlobalVars &globalVars, wxString &errMsg);
 
     protected:
         int getSubstring(const char *buffer, char *substr, int *skip);
