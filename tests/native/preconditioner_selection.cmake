@@ -1,0 +1,5 @@
+if(FASTFIELDSOLVERS_HEADLESS)
+    add_executable(test_preconditioner_selection test_preconditioner_selection.cpp)
+    target_link_libraries(test_preconditioner_selection FasterCapSolver)
+    add_test(NAME preconditioner_selection COMMAND test_preconditioner_selection)
+endif()

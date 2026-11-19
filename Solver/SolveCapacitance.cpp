@@ -89,6 +89,14 @@ int CSolveCap::Run(CAutoRefGlobalVars globalVars)
 	double start, finish;
 	int ret;
 
+	// Reject unsupported combinations before normalization can silently discard
+	// a selected method. Shared by console, GUI and Automation callers.
+	if((globalVars.m_ucPrecondType & AUTOREFINE_PRECOND_BLOCK) != 0 &&
+	   globalVars.m_ucPrecondType != AUTOREFINE_PRECOND_BLOCK) {
+		ErrMsg("Error: block preconditioner (-pb) cannot be combined with other preconditioners\n");
+		return FC_COMMAND_LINE_ERROR;
+	}
+
 	ret = FC_NORMAL_END;
 
 	LogMsg("Running ");
