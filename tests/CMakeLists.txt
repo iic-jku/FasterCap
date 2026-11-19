@@ -2,6 +2,9 @@
 # and checks the matrix (exit code, signs, symmetry, analytic values, symmetric entries).
 # Tolerances are relative; the comment of each test says why its tolerance is enough.
 
+include(RegisterTests.cmake)
+fastercap_include_tests(native)
+
 # macOS: LinAlgebra uses the Accelerate headers, so FasterCap must link Accelerate's BLAS,
 # not one found elsewhere (MacPorts OpenBLAS)
 if(APPLE)
@@ -22,9 +25,6 @@ if(FASTFIELDSOLVERS_HEADLESS)
     add_executable(test_triangulate test_triangulate.cpp)
     target_link_libraries(test_triangulate FasterCapSolver)
     add_test(NAME triangulate COMMAND test_triangulate)
-    add_executable(test_preconditioner_selection test_preconditioner_selection.cpp)
-    target_link_libraries(test_preconditioner_selection FasterCapSolver)
-    add_test(NAME preconditioner_selection COMMAND test_preconditioner_selection)
 endif()
 
 # -bv prints only the version; headless builds started a run without input file instead
@@ -37,32 +37,6 @@ find_package(Python3 COMPONENTS Interpreter)
 if(NOT Python3_Interpreter_FOUND)
     message(STATUS "Python 3 not found: no regression tests")
     return()
-endif()
-
-# #44: implicit Jacobi is replaced by an explicit selection; block combinations fail.
-add_test(NAME preconditioner_options
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_preconditioner_options.py
-        $<TARGET_FILE:FasterCap>)
-set_tests_properties(preconditioner_options PROPERTIES TIMEOUT 60)
-
-if(UNIX)
-    add_test(NAME resource_guard
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_resource_guard.py)
-    set_tests_properties(resource_guard PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
-endif()
-
-# #43: command-line error text is data, including percent conversions.
-add_test(NAME error_format
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_error_format.py
-        $<TARGET_FILE:FasterCap>)
-set_tests_properties(error_format PROPERTIES TIMEOUT 30)
-
-# Empty input must print usage and exit 64 before any solver work.
-if(FASTFIELDSOLVERS_HEADLESS)
-    add_test(NAME empty_command_line
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_empty_command_line.py
-            $<TARGET_FILE:FasterCap>)
-    set_tests_properties(empty_command_line PROPERTIES TIMEOUT 40)
 endif()
 
 # fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [INTERRUPT] [NO_MATRIX]
@@ -218,9 +192,4 @@ foreach(option -ps-1 -ps15 -ps4097 -ps16.5 -ps16x -pb-1 -pb1 -pb129 -pb2x)
     fastercap_test(out_of_range_option${option} three_cubes 0 NO_MATRIX EXIT_CODE 64 ${option})
 endforeach()
 
-# Construction/destruction and cleanup before any input need no disk blocks.
-if(FASTFIELDSOLVERS_HEADLESS)
-    add_executable(test_refiner_initialization test_refiner_initialization.cpp)
-    target_link_libraries(test_refiner_initialization FasterCapSolver)
-    add_test(NAME refiner_initialization COMMAND test_refiner_initialization)
-endif()
+fastercap_include_tests(regression)

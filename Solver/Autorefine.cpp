@@ -4626,6 +4626,23 @@ static bool IsSelfIntersectingQuad(C3DVector *vertex, const C3DVector &normal)
 	return positive == 2 && negative == 2;
 }
 
+// Keep decorated names within the same bound as CAutoConductor::m_sName.
+// Check before copying so nested includes and N statements cannot overflow.
+static bool JoinConductorName(char (&destination)[AUTOCONDUCTOR_MAX_NAME_LEN],
+                              const char *group, const char *name,
+                              const char *filename, long line)
+{
+	const size_t groupLength = strlen(group), nameLength = strlen(name);
+	if(groupLength >= sizeof(destination) || nameLength >= sizeof(destination) - groupLength) {
+		ErrMsg("Error: conductor/group name exceeds %u characters at line %ld of input file \"%s\"\n",
+		       (unsigned int)sizeof(destination) - 1, line, filename);
+		return false;
+	}
+	memcpy(destination, group, groupLength);
+	memcpy(destination + groupLength, name, nameLength + 1);
+	return true;
+}
+
 int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosMap *parentFilePosMap, CAutoRefGlobalVars *globalVars, bool isdiel, C3DVector offset, double outpermRe, double outpermIm,
                                   const char *groupname, double inpermRe, double inpermIm, C3DVector dielrefpoint)
 {
@@ -4760,14 +4777,12 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 
 			// compute group name (to distinguish between panels with the same
 			// conductor name because in the same file called more than once)
-			if(m_iParseLevel == 0) {
-				strcpy(localGroupname, "g");
-			}
-			else {
-				strcpy(localGroupname, groupname);
-			}
 			sprintf(tmpname, "%d_", m_iGroupNum[m_iParseLevel]);
-			strcat(localGroupname, tmpname);
+			if(!JoinConductorName(localGroupname, m_iParseLevel == 0 ? "g" : groupname,
+			                      tmpname, fileinname, linenum)) {
+				ret = FC_FILE_ERROR;
+				break;
+			}
 
 			// read optional '+'
 			tmpname[0] = '\0';
@@ -4944,11 +4959,9 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 				uselocaldiel = false;
 			}
 
-			strcpy(name, groupname);
-			// if this is a dielectric interface, ignore specific conductor names
-			if(isdiel == false) {
-				// concat name with group name
-				strcat(name, tmpname);
+			if(!JoinConductorName(name, groupname, isdiel ? "" : tmpname, fileinname, linenum)) {
+				ret = FC_FILE_ERROR;
+				break;
 			}
 
 			ret = (long)GetConductor(&(itc), &dielIndex, name, isdiel, outpermRe, outpermIm, inpermRe, inpermIm, dielrefpoint);
@@ -5034,11 +5047,9 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 			else {
 
 				// concat name with group name
-				strcpy(name, groupname);
-				// if this is a dielectric interface, ignore specific conductor names
-				if(isdiel == false) {
-					// concat name with group name
-					strcat(name, tmpname);
+				if(!JoinConductorName(name, groupname, isdiel ? "" : tmpname, fileinname, linenum)) {
+					ret = FC_FILE_ERROR;
+					break;
 				}
 
 				ret = (long)GetConductor(&itc, &dielIndex, name, isdiel, outpermRe, outpermIm, inpermRe, inpermIm, dielrefpoint);
@@ -5406,14 +5417,11 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 				point += skip;
 
 				// concat name with group name
-				strcpy(name, groupname);
-				// concat name with group name
-				strcat(name, condname);
-
-				// concat newname with group name
-				strcpy(newname, groupname);
-				// concat newname with group name
-				strcat(newname, tmpname);
+				if(!JoinConductorName(name, groupname, condname, fileinname, linenum) ||
+				   !JoinConductorName(newname, groupname, tmpname, fileinname, linenum)) {
+					ret = FC_FILE_ERROR;
+					break;
+				}
 
 				// if old and new names are different
 				if(strcmp(name, newname) != 0) {
@@ -5592,14 +5600,12 @@ int CAutoRefine::Parse2DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 
 			// compute group name (to distinguish between panels with the same
 			// conductor name because in the same file called more than once)
-			if(m_iParseLevel == 0) {
-				strcpy(localGroupname, "g");
-			}
-			else {
-				strcpy(localGroupname, groupname);
-			}
 			sprintf(tmpname, "%d_", m_iGroupNum[m_iParseLevel]);
-			strcat(localGroupname, tmpname);
+			if(!JoinConductorName(localGroupname, m_iParseLevel == 0 ? "g" : groupname,
+			                      tmpname, fileinname, linenum)) {
+				ret = FC_FILE_ERROR;
+				break;
+			}
 
 			// read optional '+'
 			tmpname[0] = '\0';
@@ -5784,11 +5790,9 @@ int CAutoRefine::Parse2DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 				uselocaldiel = false;
 			}
 
-			strcpy(name, groupname);
-			// if this is a dielectric interface, ignore specific conductor names
-			if(isdiel == false) {
-				// concat name with group name
-				strcat(name, tmpname);
+			if(!JoinConductorName(name, groupname, isdiel ? "" : tmpname, fileinname, linenum)) {
+				ret = FC_FILE_ERROR;
+				break;
 			}
 
 			ret = (long)GetConductor(&(itc), &dielIndex, name, isdiel, outpermRe, outpermIm, inpermRe, inpermIm, dielrefpoint);
@@ -5826,14 +5830,11 @@ int CAutoRefine::Parse2DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 				point += skip;
 
 				// concat name with group name
-				strcpy(name, groupname);
-				// concat name with group name
-				strcat(name, condname);
-
-				// concat newname with group name
-				strcpy(newname, groupname);
-				// concat newname with group name
-				strcat(newname, tmpname);
+				if(!JoinConductorName(name, groupname, condname, fileinname, linenum) ||
+				   !JoinConductorName(newname, groupname, tmpname, fileinname, linenum)) {
+					ret = FC_FILE_ERROR;
+					break;
+				}
 
 				// if old and new names are different
 				if(strcmp(name, newname) != 0) {
