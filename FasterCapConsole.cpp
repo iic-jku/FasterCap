@@ -39,41 +39,6 @@ static void StopOnSignal(int sig)
 }
 
 #ifdef FCG_HEADLESS
-
-#include <iostream>
-#include <wx/debug.h>
-
-// failed asserts are printed, not shown in a dialog: wxWidgets opens one on Windows,
-// also in console programs, and nobody closes it in a batch run
-static void ConsoleAssertHandler(const wxString& file, int line, const wxString& func,
-                                 const wxString& cond, const wxString& msg)
-{
-    std::cerr << file << "(" << line << "): assert \"" << cond << "\" failed in "
-              << func << "(): " << msg << std::endl;
-}
-
-int main(int argc, char **argv)
-{
-    int i, ret;
-    char bOption;
-
-    wxSetAssertHandler(ConsoleAssertHandler);
-
-    // the character after '-b' ('-b?', '-bv'), as FasterCapApp::OnInit() finds it for the GUI
-    bOption = '\0';
-    for(i=1; i<argc; i++) {
-        if(argv[i][0] == '-' && argv[i][1] == 'b') {
-            bOption = argv[i][2];
-        }
-    }
-
-    FasterCapConsole console;
-
-    ret = console.main(argc, argv, bOption);
-
-    return ret;
-}
-
 int FasterCapConsole::main(int& argc, char **argv, char bOption)
 #else
 int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
@@ -424,6 +389,8 @@ int FasterCapConsole::getSubstring(const char *buffer, char *substr, int *skip)
 	char *openPosPtr, *closePosPtr, *tmpStr = tmpBuffer.data();
 
 	substr[0] = '\0';
+	// sscanf returns EOF before %n on empty or whitespace-only input.
+	*skip = 0;
 
 	// read a piece of string
 	res = sscanf(buffer, "%s%n", tmpStr, skip);
