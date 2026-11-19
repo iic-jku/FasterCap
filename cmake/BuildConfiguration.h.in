@@ -1,0 +1,6 @@
+// $<CONFIG> is evaluated for the actual configuration, including multi-config generators.
+#define FC_BUILD_CONFIGURATION "$<CONFIG>"
+#define FC_BUILD_COMPILER "@FC_REPORT_COMPILER@"
+#define FC_BUILD_SYSTEM "@FC_REPORT_SYSTEM@"
+#define FC_BUILD_PROCESSOR "@FC_REPORT_PROCESSOR@"
+#define FC_BUILD_BLAS "@FC_REPORT_BLAS@"

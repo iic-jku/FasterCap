@@ -156,6 +156,10 @@ int CSolveCap::Run(CAutoRefGlobalVars globalVars)
 	start = omp_get_wtime();
 
 	try {
+		if(!globalVars.m_sReportFile.empty() && !m_clsNumericalReport.Open(globalVars)) {
+			ErrMsg("Error: cannot open numerical report \"%s\" for writing\n", globalVars.m_sReportFile.c_str());
+			return FC_FILE_ERROR;
+		}
 		ret = SolveMain(globalVars, g_clsCapMatrixRe, g_clsCapMatrixIm);
 	}
 	catch( bad_alloc& ) {
@@ -181,6 +185,11 @@ int CSolveCap::Run(CAutoRefGlobalVars globalVars)
 //  2.  In wxApp::OnExceptionInMainLoop().
 //  3.  In wxApp::OnUnhandledException()."
 
+
+	if(m_clsNumericalReport.IsOpen() && !m_clsNumericalReport.Close(ret)) {
+		ErrMsg("Error: cannot write numerical report \"%s\"\n", globalVars.m_sReportFile.c_str());
+		ret = FC_FILE_ERROR;
+	}
 
 	if(ret !=  FC_NORMAL_END) {
 		// clean up memory
@@ -1013,7 +1022,20 @@ int CSolveCap::SolveForCapacitance(CLin_Matrix *cRe, CLin_Matrix *cIm)
 
 	MakePreconditioner();
 
-	ret = Solve(cRe, cIm);
+	bool matrixComplete;
+	ret = Solve(cRe, cIm, matrixComplete);
+
+	// Only complete matrices are reported; an interrupted solve can contain unfilled rows.
+	if(m_clsNumericalReport.IsOpen() && matrixComplete) {
+		StlStringList names;
+		CopyCondNames(names);
+		int status = ret == FC_NORMAL_END && !m_bGmresConverged ? FC_CONVERGENCE_FAILED : ret;
+		if(!m_clsNumericalReport.AddIteration(*cRe, *cIm, names, m_clsGlobalVars, g_ucSolverType,
+			m_clsMulthier.GetPanelNum(AUTOREFINE_HIER_PRE_0_LEVEL),
+			m_clsMulthier.GetLinksNum(AUTOREFINE_HIER_PRE_0_LEVEL), status)) {
+			return FC_FILE_ERROR;
+		}
+	}
 
 	return ret;
 }
@@ -1096,8 +1118,9 @@ void CSolveCap::MakePreconditioner()
 
 // Remark: it is not necessary to allocate
 // solution matrix 'cRe' and 'cIm' beforehand
-int CSolveCap::Solve(CLin_Matrix *cRe, CLin_Matrix *cIm)
+int CSolveCap::Solve(CLin_Matrix *cRe, CLin_Matrix *cIm, bool &matrixComplete)
 {
+	matrixComplete = false;
 	StlAutoCondDeque::iterator itc1, itc2;
 	unsigned long i, j, potindex, chindex, caprow, capcol, panelnum, potVectorDim;
 	long firstCondElemIndex, rowNum;
@@ -1350,6 +1373,7 @@ int CSolveCap::Solve(CLin_Matrix *cRe, CLin_Matrix *cIm)
 		potindex += (*itc1)->m_ulLeafPanelNum;
 	}
 
+	matrixComplete = true;
 	finish = omp_get_wtime();
 	m_fDurationSolve = (float)(finish - start);
 

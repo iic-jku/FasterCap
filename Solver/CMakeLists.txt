@@ -13,6 +13,8 @@ set(FasterCap_Sources
     ${CMAKE_CURRENT_LIST_DIR}/MultiplyHierarchical.h
     ${CMAKE_CURRENT_LIST_DIR}/Potential.cpp
     ${CMAKE_CURRENT_LIST_DIR}/Potential.h
+    ${CMAKE_CURRENT_LIST_DIR}/NumericalReport.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/NumericalReport.h
     ${CMAKE_CURRENT_LIST_DIR}/SolveCapacitance.cpp
     ${CMAKE_CURRENT_LIST_DIR}/SolveCapacitance.h
     ${CMAKE_CURRENT_LIST_DIR}/SolverGlobal.cpp

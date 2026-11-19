@@ -53,6 +53,7 @@ CAutoRefGlobalVars::CAutoRefGlobalVars()
 void CAutoRefGlobalVars::Reset()
 {
 	m_sFileIn = "\0";
+	m_sReportFile.clear();
 	// if not specified, precond type is JACOBI
 	m_ucPrecondType = AUTOREFINE_PRECOND_JACOBI;
 	m_uiSuperPreDim = 128;

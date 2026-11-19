@@ -88,7 +88,17 @@ int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
 	// copy input arguments in a string for proper parsing (e.g. taking care of file names with spaces)
 	inputArgs.Clear();
 	for(i=1; i<argc; i++) {
-		inputArgs += argv[i];
+		wxString argument(argv[i]);
+		if(argument.StartsWith(wxT("--report="))) {
+			if(argument.Find('"') != wxNOT_FOUND) {
+				ErrMsg("Error: --report paths cannot contain double quotes\n");
+				return FC_COMMAND_LINE_ERROR;
+			}
+			inputArgs += wxT("\"") + argument + wxT("\"");
+		}
+		else {
+			inputArgs += argument;
+		}
 		// this puts an extra trailing space in the end but that's ok anyway for the parser
 		inputArgs += wxT(" ");
 	}
@@ -134,7 +144,7 @@ int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
 			LogMsg("                 [-d<interaction coeff>] [-f<outofcore>] [-g]\n");
 			LogMsg("                 [-pn] [-pj] [-ps<dimension>]\n");
 			LogMsg("                 [-o] [-oi] [-e] [-r] [-c] [-i] [-v]\n");
-			LogMsg("                 [-b|-b?|-bv]\n");
+			LogMsg("                 [--report=<path>] [-b|-b?|-bv]\n");
 			LogMsg("DEFAULT VALUES:\n");
 			LogMsg("  -a:  Automatically calculate settings, stop when\n");
 			LogMsg("       relative error is lower than <relative error>, e.g. 0.01\n");
@@ -152,6 +162,7 @@ int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
 			LogMsg("  -o:  Output refined geometry in FastCap2 format\n");
 			LogMsg("  -oi: Dump input geometry in FasterCap format and stop\n");
 			LogMsg("  -e:  Output capacitance matrix to file\n");
+			LogMsg("  --report=<path>: Write full-precision JSON report to a new file\n");
 			LogMsg("  -r:  Dump Gmres residual at each iteration\n");
 			LogMsg("  -c:  Dump charge densities in output file\n");
 			LogMsg("  -i:  Dump detailed time and memory information\n");
@@ -287,11 +298,24 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 
 	cmderr = false;
 	while(res != 0 && res != EOF && cmderr != true) {
+		if(res == -3) {
+			errMsg = wxT("Unterminated quote in command line\n");
+			return true;
+		}
 		if(argStr[0] == '-') {
 
 			// '-m' is mesh relative refinement level
 			// '-mc' is the curvature coefficient for gradient meshing near sharp edges
-			if(argStr[1] == 'm') {
+			if(strncmp(argStr, "--report=", 9) == 0) {
+				if(argStr[9] == '\0' || !globalVars.m_sReportFile.empty()) {
+					cmderr = true;
+					errMsg = wxT("--report requires one nonempty output path\n");
+				}
+				else {
+					globalVars.m_sReportFile = argStr + 9;
+				}
+			}
+			else if(argStr[1] == 'm') {
 				if(argStr[2] == 'c') {
 					cmderr = ParseOptionValue("mc", &(argStr[3]), globalVars, errMsg);
 				}
@@ -413,61 +437,35 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 	return cmderr;
 }
 
-// Special version of sscanf which handles also file names with spaces inside,
-// provided they are surrounded by '"'.
-// Note that this routine is specialized to retrieve only strings;
-// 'substr' must hold strlen(buffer) + 1 characters
+// The caller reserves strlen(buffer) + 1 bytes. Quotes preserve spaces;
+// reject an unterminated quote instead of silently changing an output path.
 int FasterCapConsole::getSubstring(const char *buffer, char *substr, int *skip)
 {
-	int res, openPos, deltaClosePos, startPos;
-	std::vector<char> tmpBuffer(strlen(buffer) + 1);
-	char *openPosPtr, *closePosPtr, *tmpStr = tmpBuffer.data();
-
+	int position = strspn(buffer, " \t\r\n");
+	int length = 0;
+	bool quoted = false;
 	substr[0] = '\0';
+	*skip = position;
+	if(buffer[position] == '\0') return EOF;
 
-	// read a piece of string
-	res = sscanf(buffer, "%s%n", tmpStr, skip);
-	// if not finished
-	if( res != EOF ) {
-		// find if it does contain any '"'
-		openPosPtr = (char *)strchr(buffer, '"');
-        // if found and if within tmpStr (before any space)
-		openPos = (int)(openPosPtr - buffer);
-		if( openPosPtr != NULL && openPos < (int)strlen(tmpStr) ) {
-			// search for the closing '"'
-			closePosPtr = (char *)strchr(buffer + openPos + 1, '"');
-			// if no closing '"', assume the end is the end of the
-			// string in the buffer, regardless of any spaces or tabs
-			if(closePosPtr == NULL) {
-				// build 'substr' string by collating the different pieces,
-				// skipping the '"'
-				strncpy(tmpStr, buffer, openPos);
-				tmpStr[openPos] = '\0';
-				strcat(tmpStr, buffer + openPos + 1);
-				// remove any trailing space left
-				startPos = strspn(tmpStr, " \t\n");
-				strcpy(substr, tmpStr + startPos);
-				*skip = strlen(buffer);
-			}
-			else {
-				// build 'substr' string by collating the different pieces,
-				// skipping the '"'s
-				deltaClosePos = (int)(closePosPtr - openPosPtr);
-				strncpy(tmpStr, buffer, openPos);
-				tmpStr[openPos] = '\0';
-				strncat(tmpStr, buffer + openPos + 1, deltaClosePos - 1);
-				// remove any trailing space left
-				startPos = strspn(tmpStr, " \t\n");
-				strcpy(substr, tmpStr + startPos);
-				*skip = openPos + deltaClosePos + 1;
+	for(; buffer[position] != '\0'; ++position) {
+		char c = buffer[position];
+		if(c == '"') {
+			quoted = !quoted;
+			if(!quoted) {
+				// As before, a closing quote finishes this argument.
+				++position;
+				break;
 			}
 		}
-		// if no '"' at all, simply copy scanned string
+		else if(!quoted && (c == ' ' || c == '\t' || c == '\r' || c == '\n')) {
+			break;
+		}
 		else {
-			strcpy(substr, tmpStr);
+			substr[length++] = c;
 		}
 	}
-
-	return res;
+	substr[length] = '\0';
+	*skip = position;
+	return quoted ? -3 : 1;
 }
-
