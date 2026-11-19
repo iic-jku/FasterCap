@@ -51,6 +51,9 @@ int main()
 	CheckToken(parser, " \t\r\n\f\v", EOF, "", 0);
 	CheckToken(parser, "shape.lst", 1, "shape.lst", 9);
 	CheckToken(parser, "  shape.lst ", 1, "shape.lst", 11);
+	CheckToken(parser, "\f\vshape.lst ", 1, "shape.lst", 11);
+	CheckToken(parser, "shape.lst\f-b", 1, "shape.lst", 9);
+	CheckToken(parser, " \t\"shape with spaces.lst\" -b", 1, "shape with spaces.lst", 25);
 	CheckToken(parser, "\"shape with spaces.lst\" -b", 1, "shape with spaces.lst", 23);
 	CheckEndOfTokens(parser, "shape.lst");
 	CheckEndOfTokens(parser, "shape.lst \t");

@@ -175,6 +175,7 @@ public:
 	unsigned char m_ucPrecondType;
 	unsigned int m_uiSuperPreDim, m_uiBlockPreSize;
 	std::string m_sFileIn;
+	std::string m_sReportFile;
 	double m_dEps, m_dMeshEps, m_dEpsRatio, m_dMeshCurvCoeff, m_dGmresTol;
 	double m_dAutoMaxErr, m_dOutOfCoreRatio;
 	bool m_bDumpResidual, m_bVerboseOutput, m_bOutputGeo, m_bDumpInputGeo, m_bAuto, m_bAutoPrecond, m_bDumpTimeMem;

@@ -29,6 +29,7 @@
 #define AFX_SOLVECAPACITANCE_H__ENRI1975_5487_55D2_9284_04F014CF5600__INCLUDED_
 
 #include "SolverGlobal.h"
+#include "NumericalReport.h"
 
 #include "MultiplyHierarchical.h"
 // includes for LinALg
@@ -69,6 +70,7 @@ public:
 	float m_fDurationPrecond;
 
 protected:
+	CNumericalReport m_clsNumericalReport;
 	int InputFile(CAutoRefGlobalVars *globalVars);
 	void AutoSetPrecondType(unsigned long numOfLinks, long condNum, CAutoRefGlobalVars &globalVars);
 	void OutputSolveParams(CAutoRefGlobalVars globalVars);
@@ -82,7 +84,7 @@ protected:
 	int SolveComputeLinks();
 	int SolveForCapacitance(CLin_Matrix *cRe, CLin_Matrix *cIm);
 	void MakePreconditioner();
-	int Solve(CLin_Matrix *cRe, CLin_Matrix *cIm);
+	int Solve(CLin_Matrix *cRe, CLin_Matrix *cIm, bool &matrixComplete);
 	int AllocateMemory();
 	int AllocateGmresMemory(unsigned long size);
 	void RecurseHierSuperPre(CAutoPanel* panel);

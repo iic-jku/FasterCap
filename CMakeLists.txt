@@ -119,6 +119,37 @@ add_library(FasterCapSolver OBJECT ${FasterCap_Sources} FasterCapGlobal.cpp Fast
 target_compile_options(FasterCapSolver PUBLIC ${FASTFIELDSOLVERS_COMPILE_OPTIONS})
 target_link_libraries(FasterCapSolver PUBLIC ${EXTRA_LIBS} ${WXWIDGETS_LIBS} ${EIGEN_LIBS})
 
+# The optional JSON report identifies the configuration and source state actually built.
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
+add_custom_target(FasterCapBuildProvenance
+    COMMAND ${CMAKE_COMMAND}
+        "-DFASTERCAP_SOURCE=${PROJECT_SOURCE_DIR}"
+        "-DLINALGEBRA_SOURCE=${FASTFIELDSOLVERS_DIR}/LinAlgebra"
+        "-DGEOMETRY_SOURCE=${FASTFIELDSOLVERS_DIR}/Geometry"
+        "-DTEMPLATE=${PROJECT_SOURCE_DIR}/cmake/BuildProvenance.h.in"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/generated/BuildProvenance.h"
+        -P "${PROJECT_SOURCE_DIR}/cmake/BuildProvenance.cmake"
+    BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildProvenance.h"
+    VERBATIM)
+add_dependencies(FasterCapSolver FasterCapBuildProvenance)
+get_target_property(FC_REPORT_BLAS LinAlgebra INTERFACE_LINK_LIBRARIES)
+if(NOT FC_REPORT_BLAS)
+    set(FC_REPORT_BLAS "")
+endif()
+set(FC_REPORT_COMPILER "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+set(FC_REPORT_SYSTEM "${CMAKE_SYSTEM_NAME}")
+set(FC_REPORT_PROCESSOR "${CMAKE_SYSTEM_PROCESSOR}")
+# C++ string literals, including Windows library paths.
+foreach(value FC_REPORT_COMPILER FC_REPORT_SYSTEM FC_REPORT_PROCESSOR FC_REPORT_BLAS)
+    string(REPLACE "\\" "\\\\" ${value} "${${value}}")
+    string(REPLACE "\"" "\\\"" ${value} "${${value}}")
+endforeach()
+configure_file(cmake/BuildConfiguration.h.in generated/BuildConfiguration.h.in @ONLY)
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/$<CONFIG>/BuildConfiguration.h"
+    INPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildConfiguration.h.in")
+target_include_directories(FasterCapSolver PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/generated" "${CMAKE_CURRENT_BINARY_DIR}/generated/$<CONFIG>")
+
 # Compile the console parser once for the executable and its unit tests.
 add_library(FasterCapConsole OBJECT FasterCapConsole.cpp FasterCapConsole.h)
 target_link_libraries(FasterCapConsole PUBLIC FasterCapSolver)
