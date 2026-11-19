@@ -10,7 +10,9 @@ Checks, for the last matrix printed:
 - the analytic values and the entries that are equal by symmetry of the geometry
 
 Complex permittivities give complex entries: their real parts must have the signs above, and
-the differences are relative to the magnitudes.
+the differences are relative to the magnitudes. Reciprocity compares the transpose, not the
+conjugate transpose. Analytic error, reciprocity, row sums and equal entries can each use a
+separate tolerance; omitted overrides retain --tolerance.
 
 With --out-of-core, FasterCap runs again out-of-core with blocks of one link chunk, and the
 two matrices must agree.
@@ -77,15 +79,24 @@ def parse_last_matrix(output):
     if len(blocks) < 2:
         return None, []
     lines = blocks[-1].strip().splitlines()
-    m = re.match(r"Dimension (\d+) x (\d+)", lines[0]) if lines else None
+    m = re.fullmatch(r"Dimension (\d+) x (\d+)", lines[0]) if lines else None
     if not m:
-        return None, []
+        raise ValueError("missing or invalid dimension header")
     n = int(m.group(1))
+    if n == 0 or n != int(m.group(2)):
+        raise ValueError("expected a nonempty square matrix, got %s" % lines[0])
+    if len(lines) < n + 1:
+        raise ValueError("expected %d matrix rows, got %d" % (n, len(lines) - 1))
     names, rows = [], []
-    for line in lines[1:1 + n]:
+    for i, line in enumerate(lines[1:1 + n], 1):
         fields = line.split()
+        if len(fields) != n + 1:
+            raise ValueError("matrix row %d needs a conductor name and %d entries" % (i, n))
         names.append(fields[0])
-        rows.append([number(v) for v in fields[1:]])
+        try:
+            rows.append([number(v) for v in fields[1:]])
+        except ValueError as exc:
+            raise ValueError("invalid number in matrix row %d: %s" % (i, line)) from exc
     return names, rows
 
 
@@ -96,11 +107,26 @@ def number(text):
 
 
 def relative_difference(a, b):
+    # NaN comparisons otherwise return false and let invalid output files pass.
+    if not cmath.isfinite(a) or not cmath.isfinite(b):
+        return math.inf
     scale = max(abs(a), abs(b))
     return abs(a - b) / scale if scale else 0.0
 
 
-def check_matrix(rows, geometry, tolerance):
+def tolerance_value(text):
+    value = float(text)
+    if not math.isfinite(value) or value < 0:
+        raise ValueError("tolerance must be finite and nonnegative")
+    return value
+
+
+def check_matrix(rows, geometry, tolerance, *, analytic_tolerance=None, reciprocity_tolerance=None,
+                 row_sum_tolerance=None, equality_tolerance=None):
+    analytic_tolerance = tolerance if analytic_tolerance is None else analytic_tolerance
+    reciprocity_tolerance = tolerance if reciprocity_tolerance is None else reciprocity_tolerance
+    row_sum_tolerance = tolerance if row_sum_tolerance is None else row_sum_tolerance
+    equality_tolerance = tolerance if equality_tolerance is None else equality_tolerance
     errors = []
     n = len(rows)
     if n != geometry.conductors or any(len(r) != n for r in rows):
@@ -113,25 +139,25 @@ def check_matrix(rows, geometry, tolerance):
         return errors
     for i in range(n):
         if rows[i][i].real <= 0:
-            errors.append("C%d%d = %g is not positive" % (i + 1, i + 1, rows[i][i]))
-        if sum(rows[i]).real < -tolerance * rows[i][i].real:
+            errors.append("C%d%d = %s is not positive" % (i + 1, i + 1, rows[i][i]))
+        if sum(rows[i]).real < -row_sum_tolerance * rows[i][i].real:
             errors.append("row %d sums to %s, below zero" % (i + 1, sum(rows[i])))
         for j in range(n):
             if i == j:
                 continue
             if rows[i][j].real >= 0:
-                errors.append("C%d%d = %g is not negative" % (i + 1, j + 1, rows[i][j]))
-            if j > i and relative_difference(rows[i][j], rows[j][i]) > tolerance:
-                errors.append("C%d%d = %g and C%d%d = %g differ by more than %g"
-                              % (i + 1, j + 1, rows[i][j], j + 1, i + 1, rows[j][i], tolerance))
+                errors.append("C%d%d = %s is not negative" % (i + 1, j + 1, rows[i][j]))
+            if j > i and relative_difference(rows[i][j], rows[j][i]) > reciprocity_tolerance:
+                errors.append("C%d%d = %s and C%d%d = %s differ by more than %g"
+                              % (i + 1, j + 1, rows[i][j], j + 1, i + 1, rows[j][i], reciprocity_tolerance))
     for (i, j), expected in geometry.analytic.items():
         obtained = rows[i - 1][j - 1]
-        if relative_difference(obtained, expected) > tolerance:
+        if relative_difference(obtained, expected) > analytic_tolerance:
             errors.append("C%d%d = %s, analytic %s (%.2f %% off)"
                           % (i, j, obtained, expected, 100.0 * relative_difference(obtained, expected)))
     for (i, j), (k, l) in geometry.equal_entries:
-        if relative_difference(rows[i - 1][j - 1], rows[k - 1][l - 1]) > tolerance:
-            errors.append("C%d%d = %g and C%d%d = %g should be equal"
+        if relative_difference(rows[i - 1][j - 1], rows[k - 1][l - 1]) > equality_tolerance:
+            errors.append("C%d%d = %s and C%d%d = %s should be equal"
                           % (i, j, rows[i - 1][j - 1], k, l, rows[k - 1][l - 1]))
     return errors
 
@@ -151,20 +177,25 @@ def run(fastercap, list_file, options, full_path=False):
     return command, result.returncode, result.stdout
 
 
-def check_run(command, returncode, output, geometry, tolerance, exit_code=0, no_matrix=False):
+def check_run(command, returncode, output, geometry, tolerance, exit_code=0, no_matrix=False,
+              **matrix_tolerances):
     errors = []
     if isinstance(returncode, str):
         errors.append(returncode)
     elif returncode != exit_code:
         errors.append("exit code %d, expected %d" % (returncode, exit_code))
-    names, rows = parse_last_matrix(output)
+    try:
+        names, rows = parse_last_matrix(output)
+    except ValueError as exc:
+        names, rows = None, []
+        errors.append("invalid capacitance matrix: %s" % exc)
     if no_matrix:
         if names is not None:
             errors.append("a capacitance matrix in the output")
     elif names is None:
         errors.append("no capacitance matrix in the output")
     else:
-        errors += check_matrix(rows, geometry, tolerance)
+        errors += check_matrix(rows, geometry, tolerance, **matrix_tolerances)
     print(" ".join(command))
     for name, row in zip(names or [], rows):
         print("%-12s %s" % (name, " ".join("%.6g" % v if isinstance(v, float) else str(v) for v in row)))
@@ -203,6 +234,27 @@ def area(vertices):
     return total
 
 
+def check_matrix_file(path, rows):
+    """Check real or complex CSV entries against the already validated printed matrix."""
+    if not os.path.exists(path):
+        return ["-e: no %s" % os.path.basename(path)]
+    try:
+        with open(path) as f:
+            written = [[number(v) for v in line.split(",")] for line in f if line.strip()]
+    except (OSError, ValueError) as exc:
+        return ["-e: cannot read %s: %s" % (os.path.basename(path), exc)]
+    n = len(rows)
+    if len(written) != n or any(len(r) != n for r in written):
+        return ["-e: %s is not a %d x %d matrix" % (os.path.basename(path), n, n)]
+    errors = []
+    for i in range(n):
+        for j in range(n):
+            if relative_difference(written[i][j], rows[i][j]) > OUTPUT_TOLERANCE:
+                errors.append("-e: C%d%d = %s in the file, %s printed"
+                              % (i + 1, j + 1, written[i][j], rows[i][j]))
+    return errors
+
+
 def check_output_files(list_file, output, names, rows):
     """errors in the files of -o (refined geometry), -e (matrix) and -c (charge densities)"""
     errors = []
@@ -219,20 +271,7 @@ def check_output_files(list_file, output, names, rows):
             errors.append("-o: %d panels in %s, %s after refinement"
                           % (count, os.path.basename(refined_file), refined[-1] if refined else "?"))
 
-    matrix_file = base + ".csv"
-    if not os.path.exists(matrix_file):
-        errors.append("-e: no %s" % os.path.basename(matrix_file))
-    else:
-        with open(matrix_file) as f:
-            written = [[float(v) for v in line.split(",")] for line in f if line.strip()]
-        if len(written) != n or any(len(r) != n for r in written):
-            errors.append("-e: %s is not a %d x %d matrix" % (os.path.basename(matrix_file), n, n))
-        else:
-            for i in range(n):
-                for j in range(n):
-                    if relative_difference(written[i][j], rows[i][j]) > OUTPUT_TOLERANCE:
-                        errors.append("-e: C%d%d = %g in the file, %g printed"
-                                      % (i + 1, j + 1, written[i][j], rows[i][j]))
+    errors += check_matrix_file(base + ".csv", rows)
 
     # FasterCap prints one excitation per row: with conductor i at 1 V, the charge on conductor
     # j is Cij; <base>_<conductor i>.lst names the panel files of all conductors in their order
@@ -247,8 +286,8 @@ def check_output_files(list_file, output, names, rows):
             continue
         for j, path in enumerate(files):
             charge = sum(area(vertices) * density for vertices, density in read_panels(path))
-            if abs(charge - rows[i][j]) > OUTPUT_TOLERANCE * rows[i][i]:
-                errors.append("-c: charge %g on conductor %d with %d at 1 V, C%d%d = %g"
+            if not abs(charge - rows[i][j]) <= OUTPUT_TOLERANCE * abs(rows[i][i]):
+                errors.append("-c: charge %s on conductor %d with %d at 1 V, C%d%d = %s"
                               % (charge, j + 1, i + 1, i + 1, j + 1, rows[i][j]))
     return errors
 
@@ -327,7 +366,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--fastercap", required=True, help="FasterCap executable")
     parser.add_argument("--geometry", required=True, choices=sorted(geometries.GEOMETRIES))
-    parser.add_argument("--tolerance", required=True, type=float, help="relative tolerance")
+    parser.add_argument("--tolerance", required=True, type=tolerance_value, help="default relative tolerance")
+    for name in ("analytic", "reciprocity", "row-sum", "equality"):
+        parser.add_argument("--%s-tolerance" % name, type=tolerance_value,
+                            help="relative %s tolerance (default: --tolerance)" % name)
     parser.add_argument("--workdir", required=True, help="directory for the input files")
     parser.add_argument("--out-of-core", action="store_true",
                         help="run again out-of-core and compare the matrices")
@@ -350,6 +392,8 @@ def main():
                         help="FasterCap options after --, e.g. -- -a0.01")
     args = parser.parse_args()
     fastercap_args = args.fastercap_args[1:] if args.fastercap_args[:1] == ["--"] else args.fastercap_args
+    matrix_tolerances = {name + "_tolerance": getattr(args, name + "_tolerance")
+                         for name in ("analytic", "reciprocity", "row_sum", "equality")}
 
     geometry = geometries.GEOMETRIES[args.geometry]
     os.makedirs(args.workdir, exist_ok=True)
@@ -372,7 +416,7 @@ def main():
     command, returncode, output = run(args.fastercap, list_file, fastercap_args + output_options,
                                       full_path=bool(args.long_path))
     rows, errors = check_run(command, returncode, output, geometry, args.tolerance,
-                             args.exit_code, args.no_matrix)
+                             args.exit_code, args.no_matrix, **matrix_tolerances)
     if args.long_path and "Input file: %s\n" % list_file not in output:
         errors.append("the log doesn't name the input file, %d characters" % len(list_file))
 
@@ -383,7 +427,8 @@ def main():
 
     if args.same_as is not None and not errors:
         command, returncode, same_output = run(args.fastercap, list_file, args.same_as.split())
-        same_rows, same_errors = check_run(command, returncode, same_output, geometry, args.tolerance)
+        same_rows, same_errors = check_run(command, returncode, same_output, geometry, args.tolerance,
+                                           **matrix_tolerances)
         errors += ["%s: %s" % (args.same_as, e) for e in same_errors]
         if not same_errors:
             for i, (row, same_row) in enumerate(zip(rows, same_rows)):
@@ -398,20 +443,22 @@ def main():
     if args.dump_input and not errors:
         command, returncode, dump_output = run(args.fastercap, list_file, fastercap_args + ["-oi"])
         dump_file = os.path.splitext(list_file)[0] + "_dump.lst"
-        if returncode != 0 or parse_last_matrix(dump_output)[0] is not None:
-            errors.append("-oi: exit code %s, expected 0 without a matrix" % returncode)
+        _, dump_errors = check_run(command, returncode, dump_output, geometry, args.tolerance,
+                                    no_matrix=True, **matrix_tolerances)
+        if dump_errors:
+            errors += ["-oi: " + e for e in dump_errors]
         elif not os.path.exists(dump_file):
             errors.append("-oi: no %s" % os.path.basename(dump_file))
         else:
             command, returncode, dump_output = run(args.fastercap, dump_file, fastercap_args)
             dump_rows, dump_errors = check_run(command, returncode, dump_output, geometry,
-                                               args.tolerance)
+                                               args.tolerance, **matrix_tolerances)
             errors += ["dump: " + e for e in dump_errors]
             if not dump_errors:
                 for i, (row, dump_row) in enumerate(zip(rows, dump_rows)):
                     for j, (value, dump_value) in enumerate(zip(row, dump_row)):
                         if relative_difference(value, dump_value) > REFERENCE_TOLERANCE:
-                            errors.append("dump: C%d%d = %g, input gives %g"
+                            errors.append("dump: C%d%d = %s, input gives %s"
                                           % (i + 1, j + 1, dump_value, value))
 
     if args.out_of_core and not errors:
@@ -420,7 +467,8 @@ def main():
             errors.append(error)
         else:
             command, returncode, output = run(args.fastercap, list_file, fastercap_args + ["-f%g" % ratio])
-            ooc_rows, ooc_errors = check_run(command, returncode, output, geometry, args.tolerance)
+            ooc_rows, ooc_errors = check_run(command, returncode, output, geometry, args.tolerance,
+                                            **matrix_tolerances)
             errors += ["out-of-core: " + e for e in ooc_errors]
             percent = re.search(r"more than (\S+)% of the available free memory", output)
             if "Going out-of-core" not in output:
@@ -432,20 +480,20 @@ def main():
                 for i, (row, ooc_row) in enumerate(zip(rows, ooc_rows)):
                     for j, (value, ooc_value) in enumerate(zip(row, ooc_row)):
                         if relative_difference(value, ooc_value) > OUT_OF_CORE_TOLERANCE:
-                            errors.append("out-of-core C%d%d = %g, in-core %g" % (i + 1, j + 1, ooc_value, value))
+                            errors.append("out-of-core C%d%d = %s, in-core %s" % (i + 1, j + 1, ooc_value, value))
 
     if args.reference and not errors:
         reference = geometries.GEOMETRIES[args.reference]
         reference_file = os.path.abspath(reference.write(args.workdir))
         command, returncode, output = run(args.fastercap, reference_file, fastercap_args)
         reference_rows, reference_errors = check_run(command, returncode, output, reference,
-                                                     args.tolerance)
+                                                     args.tolerance, **matrix_tolerances)
         errors += ["reference: " + e for e in reference_errors]
         if not reference_errors:
             for i, (row, reference_row) in enumerate(zip(rows, reference_rows)):
                 for j, (value, reference_value) in enumerate(zip(row, reference_row)):
                     if relative_difference(value, reference_value) > REFERENCE_TOLERANCE:
-                        errors.append("C%d%d = %g, %s gives %g"
+                        errors.append("C%d%d = %s, %s gives %s"
                                       % (i + 1, j + 1, value, args.reference, reference_value))
 
     return report(errors, output)

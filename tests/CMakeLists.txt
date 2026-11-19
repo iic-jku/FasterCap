@@ -1,6 +1,8 @@
 # Regression tests: check_capacitance.py runs FasterCap on a geometry of geometries.py
 # and checks the matrix (exit code, signs, symmetry, analytic values, symmetric entries).
 # Tolerances are relative; the comment of each test says why its tolerance is enough.
+# Analytic, reciprocity, row-sum and equality overrides affect only that check; an omitted
+# override retains the existing default. Mesh error need not weaken the physical checks.
 
 # macOS: LinAlgebra uses the Accelerate headers, so FasterCap must link Accelerate's BLAS,
 # not one found elsewhere (MacPorts OpenBLAS)
@@ -32,13 +34,17 @@ if(NOT Python3_Interpreter_FOUND)
     return()
 endif()
 
+add_test(NAME check_capacitance
+    COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/test_check_capacitance.py)
+
 # fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [INTERRUPT] [NO_MATRIX]
 #                [DUMP_INPUT] [OUTPUT_FILES] [EXIT_CODE <code>] [REFERENCE <geometry>]
-#                [NAMES <name,...>] [SAME_AS <other options>] [LONG_PATH <length>]
-#                <FasterCap options>...)
+#                [NAMES <name,...>] [SAME_AS <other options>] [LONG_PATH <length>] [ANALYTIC_TOLERANCE <rel>]
+#                [RECIPROCITY_TOLERANCE <rel>] [ROW_SUM_TOLERANCE <rel>]
+#                [EQUALITY_TOLERANCE <rel>] <FasterCap options>...)
 function(fastercap_test name geometry tolerance)
     cmake_parse_arguments(PARSE_ARGV 3 arg "OUT_OF_CORE;INTERRUPT;NO_MATRIX;DUMP_INPUT;OUTPUT_FILES"
-                          "EXIT_CODE;REFERENCE;NAMES;SAME_AS;LONG_PATH" "")
+                          "EXIT_CODE;REFERENCE;NAMES;SAME_AS;LONG_PATH;ANALYTIC_TOLERANCE;RECIPROCITY_TOLERANCE;ROW_SUM_TOLERANCE;EQUALITY_TOLERANCE" "")
     set(flags)
     if(arg_OUT_OF_CORE)
         list(APPEND flags --out-of-core)
@@ -70,6 +76,13 @@ function(fastercap_test name geometry tolerance)
     if(DEFINED arg_LONG_PATH)
         list(APPEND flags --long-path ${arg_LONG_PATH})
     endif()
+    foreach(kind ANALYTIC RECIPROCITY ROW_SUM EQUALITY)
+        if(DEFINED arg_${kind}_TOLERANCE)
+            string(TOLOWER "${kind}" option)
+            string(REPLACE "_" "-" option "${option}")
+            list(APPEND flags --${option}-tolerance ${arg_${kind}_TOLERANCE})
+        endif()
+    endforeach()
     add_test(NAME ${name}
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_capacitance.py
             --fastercap $<TARGET_FILE:FasterCap>
