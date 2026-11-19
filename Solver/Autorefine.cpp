@@ -3504,7 +3504,7 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 		}
 		else if(rdist / rmax < 2.0) {
 			if(m_clsGlobalVars.m_cScheme == AUTOREFINE_GALERKIN) {
-				potestim1 = m_clsPotential.MutualDFullNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 10);
+				potestim1 = m_clsPotential.MutualDHalfNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 0.0, 10);
 			}
 			else {
 				potestim1 = m_clsPotential.EnFieldNumerical(panel1->GetCentroid(), panel2->m_clsVertex, normal1, 5) / FOUR_PI_TIMES_E0;
@@ -3513,7 +3513,7 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 		}
 		else if(rdist / rmax < 4.0) {
 			if(m_clsGlobalVars.m_cScheme == AUTOREFINE_GALERKIN) {
-				potestim1 = m_clsPotential.MutualDFullNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 5);
+				potestim1 = m_clsPotential.MutualDHalfNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 0.0, 5);
 			}
 			else {
 				potestim1 = m_clsPotential.EnFieldNumerical(panel1->GetCentroid(), panel2->m_clsVertex, normal1, 3) / FOUR_PI_TIMES_E0;
@@ -3522,7 +3522,7 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 		}
 		else if(rdist / rmax < 10.0) {
 			if(m_clsGlobalVars.m_cScheme == AUTOREFINE_GALERKIN) {
-				potestim1 = m_clsPotential.MutualD_2thOrd_FullNum(panel1->m_clsVertex, panel2->m_clsVertex, normal1);
+				potestim1 = m_clsPotential.MutualDHalfNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 0.0, 2);
 			}
 			else {
 				potestim1 = m_clsPotential.EnFieldNumerical(panel1->GetCentroid(), panel2->m_clsVertex, normal1, 2) / FOUR_PI_TIMES_E0;
@@ -3771,8 +3771,8 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 		}
 		else if(rdist / rmax < 2.0) {
 			if(m_clsGlobalVars.m_cScheme == AUTOREFINE_GALERKIN) {
-				potestim1 = m_clsPotential.MutualDFullNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 10);
-				potestim2 = m_clsPotential.MutualDFullNumerical(panel2->m_clsVertex, panel1->m_clsVertex, normal2, 10);
+				potestim1 = m_clsPotential.MutualDHalfNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 0.0, 10);
+				potestim2 = m_clsPotential.MutualDHalfNumerical(panel2->m_clsVertex, panel1->m_clsVertex, normal2, 0.0, 10);
 			}
 			else {
 				potestim1 = m_clsPotential.EnFieldNumerical(panel1->GetCentroid(), panel2->m_clsVertex, normal1, 5) / FOUR_PI_TIMES_E0;
@@ -3782,8 +3782,8 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 		}
 		else if(rdist / rmax < 4.0) {
 			if(m_clsGlobalVars.m_cScheme == AUTOREFINE_GALERKIN) {
-				potestim1 = m_clsPotential.MutualDFullNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 5);
-				potestim2 = m_clsPotential.MutualDFullNumerical(panel2->m_clsVertex, panel1->m_clsVertex, normal2, 5);
+				potestim1 = m_clsPotential.MutualDHalfNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 0.0, 5);
+				potestim2 = m_clsPotential.MutualDHalfNumerical(panel2->m_clsVertex, panel1->m_clsVertex, normal2, 0.0, 5);
 			}
 			else {
 				potestim1 = m_clsPotential.EnFieldNumerical(panel1->GetCentroid(), panel2->m_clsVertex, normal1, 3) / FOUR_PI_TIMES_E0;
@@ -3793,8 +3793,8 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 		}
 		else if(rdist / rmax < 10.0) {
 			if(m_clsGlobalVars.m_cScheme == AUTOREFINE_GALERKIN) {
-				potestim1 = m_clsPotential.MutualD_2thOrd_FullNum(panel1->m_clsVertex, panel2->m_clsVertex, normal1);
-				potestim2 = m_clsPotential.MutualD_2thOrd_FullNum(panel2->m_clsVertex, panel1->m_clsVertex, normal2);
+				potestim1 = m_clsPotential.MutualDHalfNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 0.0, 2);
+				potestim2 = m_clsPotential.MutualDHalfNumerical(panel2->m_clsVertex, panel1->m_clsVertex, normal2, 0.0, 2);
 			}
 			else {
 				potestim1 = m_clsPotential.EnFieldNumerical(panel1->GetCentroid(), panel2->m_clsVertex, normal1, 2) / FOUR_PI_TIMES_E0;
@@ -3862,7 +3862,7 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 		else if(rdist / rmax < 2.0) {
 			if(m_clsGlobalVars.m_cScheme == AUTOREFINE_GALERKIN) {
 				potestim1 = m_clsPotential.MutualHalfNumerical(panel1->m_clsVertex, panel2->m_clsVertex, 10);
-				potestim2 = m_clsPotential.MutualDFullNumerical(panel2->m_clsVertex, panel1->m_clsVertex, normal2, 10);
+				potestim2 = m_clsPotential.MutualDHalfNumerical(panel2->m_clsVertex, panel1->m_clsVertex, normal2, 0.0, 10);
 			}
 			else {
 				potestim1 = m_clsPotential.PotentialNumerical(panel1->GetCentroid(), panel2->m_clsVertex, 5) / FOUR_PI_TIMES_E0;
@@ -3873,7 +3873,7 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 		else if(rdist / rmax < 4.0) {
 			if(m_clsGlobalVars.m_cScheme == AUTOREFINE_GALERKIN) {
 				potestim1 = m_clsPotential.Mutual_4thOrd_FullNum(panel1->m_clsVertex, panel2->m_clsVertex);
-				potestim2 = m_clsPotential.MutualDFullNumerical(panel2->m_clsVertex, panel1->m_clsVertex, normal2, 5);
+				potestim2 = m_clsPotential.MutualDHalfNumerical(panel2->m_clsVertex, panel1->m_clsVertex, normal2, 0.0, 5);
 			}
 			else {
 				potestim1 = m_clsPotential.PotentialNumerical(panel1->GetCentroid(), panel2->m_clsVertex, 3) / FOUR_PI_TIMES_E0;
@@ -3884,7 +3884,7 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 		else if(rdist / rmax < 10.0) {
 			if(m_clsGlobalVars.m_cScheme == AUTOREFINE_GALERKIN) {
 				potestim1 = m_clsPotential.Mutual_2thOrd_FullNum(panel1->m_clsVertex, panel2->m_clsVertex);
-				potestim2 = m_clsPotential.MutualD_2thOrd_FullNum(panel2->m_clsVertex, panel1->m_clsVertex, normal2);
+				potestim2 = m_clsPotential.MutualDHalfNumerical(panel2->m_clsVertex, panel1->m_clsVertex, normal2, 0.0, 2);
 			}
 			else {
 				potestim1 = m_clsPotential.PotentialNumerical(panel1->GetCentroid(), panel2->m_clsVertex, 2) / FOUR_PI_TIMES_E0;
@@ -3951,7 +3951,7 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 		}
 		else if(rdist / rmax < 2.0) {
 			if(m_clsGlobalVars.m_cScheme == AUTOREFINE_GALERKIN) {
-				potestim1 = m_clsPotential.MutualDFullNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 10);
+				potestim1 = m_clsPotential.MutualDHalfNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 0.0, 10);
 				potestim2 = m_clsPotential.MutualHalfNumerical(panel2->m_clsVertex, panel1->m_clsVertex, 10);
 			}
 			else {
@@ -3962,7 +3962,7 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 		}
 		else if(rdist / rmax < 4.0) {
 			if(m_clsGlobalVars.m_cScheme == AUTOREFINE_GALERKIN) {
-				potestim1 = m_clsPotential.MutualDFullNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 5);
+				potestim1 = m_clsPotential.MutualDHalfNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 0.0, 5);
 				potestim2 = m_clsPotential.Mutual_4thOrd_FullNum(panel2->m_clsVertex, panel1->m_clsVertex);
 			}
 			else {
@@ -3973,7 +3973,7 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 		}
 		else if(rdist / rmax < 10.0) {
 			if(m_clsGlobalVars.m_cScheme == AUTOREFINE_GALERKIN) {
-				potestim1 = m_clsPotential.MutualD_2thOrd_FullNum(panel1->m_clsVertex, panel2->m_clsVertex, normal1);
+				potestim1 = m_clsPotential.MutualDHalfNumerical(panel1->m_clsVertex, panel2->m_clsVertex, normal1, 0.0, 2);
 				potestim2 = m_clsPotential.Mutual_2thOrd_FullNum(panel2->m_clsVertex, panel1->m_clsVertex);
 			}
 			else {

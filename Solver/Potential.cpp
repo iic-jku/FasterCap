@@ -31,6 +31,8 @@
 //#include "stdafx.h"
 
 #include <math.h>
+#include <cmath>
+#include <float.h>
 
 #include "Potential.h"
 
@@ -2776,351 +2778,175 @@ double CPotential::MutualHalfNumerical(CAutoPanel panel1,
 	return( result/FOUR_PI_TIMES_E0 );
 }
 
-// Electric field component in direction normal to one triangular patch
-// due to a second triangular patch with uniform charge
-//
-// This version uses numerical quadrature based on rule 'rule'
-// on the outer integral and divided differences of two analytical
-// integration on the potential on the inner integral,
-// to deal with singularity
-//
-// this is an optimized version of the MutualHalfNumerical() routine,
-// using also the quantities already calculated as CAutoPanel
-//
-// vertexes1 is an array of 3 3D point coordinates,
-//           corresponding to the vertexes of the first triangle
-//
-// vertexes2 is an array of 3 3D point coordinates,
-//           corresponding to the vertexes of the second triangle
-//
-// normal is the normal direction vector on the first triangular panel
-//
-// h is the distance of the observation points above and below the
-// first panel, along the normal, for usage in the divided differences
-//
-// rule is the integration formula to use, see InitNumerical()
-double CPotential::MutualDHalfNumerical(C3DVector_float vertexes1[3],
-						  C3DVector_float vertexes2[3], C3DVector pnormal, double h, int rule, bool divideByArea)
+// Integrate the target triangle analytically before quadrature over the source.
+// The normal component is its oriented solid angle; tangential components are
+// boundary line integrals. Summing target faces of a closed surface therefore
+// obeys Gauss' law at every source quadrature point, even close to an interface.
+namespace {
+// Exact zero test for a plane determinant of binary32 coordinates. Each product
+// of two coordinates is exact in binary64; fma retains the third product's tail.
+// Grow-expansion summation keeps every rounding residual (Shewchuk, 1997).
+// Four 3x3 determinants need at most 48 terms, with no allocation or distance cutoff.
+class CExactPlaneDeterminant
 {
-	C3DVector side1, side2, side3, normal, x, y, z;
-	C3DVector p3d, evalPlus, evalMinus;
-	double potestim_p, potestim_n;
-	//C3DVector vert2d[2], transform[2];
-	//CLin_Matrix vert2d(2,3), transform;
-	// this is the transpose of the inverse of [0,1,1;1,0,1;0,0,1],
-	// the matrix representing the unit triangle
-	//static const double unittranmtx[9] = { 0, 1, 0,
-	//                                      1, 0, 0,
-	//						             -1,-1, 1};
-	//CLin_Matrix unittranmtx(3, 3, tranmatrix);
-	double jacobian, pot, area1, area2, result, point0, point1;
-	double vert2d01, vert2d02, vert2d12;
-	unsigned int i;
+public:
+	CExactPlaneDeterminant() : m_iCount(0) {}
+	void AddDeterminant(C3DVector a, C3DVector b, C3DVector c, double sign)
+	{
+		AddProduct(a.x, b.y, c.z, sign);
+		AddProduct(a.y, b.z, c.x, sign);
+		AddProduct(a.z, b.x, c.y, sign);
+		AddProduct(a.x, b.z, c.y, -sign);
+		AddProduct(a.y, b.x, c.z, -sign);
+		AddProduct(a.z, b.y, c.x, -sign);
+	}
+	bool IsZero() const { return m_iCount == 0; }
+private:
+	void Add(double value)
+	{
+		int count = 0;
+		for(int i = 0; i < m_iCount; i++) {
+			double sum = value + m_dTerms[i];
+			double part = sum - value;
+			double error = (value - (sum - part)) + (m_dTerms[i] - part);
+			if(error != 0.0) m_dTerms[count++] = error;
+			value = sum;
+		}
+		if(value != 0.0) m_dTerms[count++] = value;
+		m_iCount = count;
+	}
+	void AddProduct(double a, double b, double c, double sign)
+	{
+		double ab = a*b, product = ab*c;
+		Add(sign*std::fma(ab, c, -product));
+		Add(sign*product);
+	}
+	int m_iCount;
+	double m_dTerms[48];
+};
 
-	// compute side vectors of triangle 1
-	side1 = vertexes1[1] - vertexes1[0];
-	side2 = vertexes1[2] - vertexes1[1];
-	side3 = vertexes1[0] - vertexes1[2];
-
-	// compute unit vector normal to triangle plane (uses vector product)
-	// optimized operation
-	//normal = CrossProd(side1, side2);
-	normal.x = side1.y*side2.z - side1.z*side2.y;
-	normal.y = -side1.x*side2.z + side1.z*side2.x;
-	normal.z = side1.x*side2.y - side1.y*side2.x;
-	z = normal/Mod(normal);
-
-	// compute local x, y axes versors; x is along side1,
-	// y is perp. to side1 in counter-clockwise direction
-	x = side1/Mod(side1);
-	// note that, since x and z are unit vectors, y is too
-	// optimized operation - but seems no apparent benefit
-	//y = CrossProd(x, z);
-	C3D_CROSSPROD(y,x,z)
-
-	// calculates the coordinates of the first triangle in local 2D frame;
-	// the origin is located on first vertex.
-	// Therefore vert2d is an array of 3 2D point coordinates,
-	// corresponding to the vertexes of the intergration triangular domain, [x1,y1;x2,y2;x3,y3]
-	vert2d01 = Mod(side1);
-	// optimized operation - but seems no apparent benefit
-	//vert2d[0].z = -DotProd(side3,x);
-	//vert2d[1].z = -DotProd(side3,y);
-	vert2d02 = -C3D_DOTPROD(side3,x);
-	vert2d12 = -C3D_DOTPROD(side3,y);
-
-	// calculates the coordinate transformation needed
-	// to map the first triangle to a unit triangle
-	// Basically, this is the following operation
-	//
-	//	static const double unittranmtx[9] = { 0, 1, 0,
-	//	                                      1, 0, 0,
-	//							             -1,-1, 1};
-	// 	transform = vert2d * unittranmtx;
-	//
-	// where unittranmtx is the transpose of the inverse of [0,1,1;1,0,1;0,0,1],
-	// the matrix representing the unit triangle
-	//
-	// Explanation: we are in 2D, but we use homogeneous coordinates.
-	// The mapping is a linear transformation, i.e. to map a point (xt, yt, 1)
-	// from a unit triangle to a point (x0, y0, 1) on a general triangle we use:
-	// x0 = a*xt + b*yt + c
-	// y0 = d*xt + e*yt + f
-	// Therefore to map the corners of a unit triangle to the corners of a general
-	// triangle we have:
-	// [ x0 x1 x2 ]    [ a b c ]   [ 0 1 0 ]
-	// [ y0 y1 y2 ]  = [ d e f ] * [ 1 0 0 ]
-	// [  1  1  1 ]    [ 0 0 1 ]   [ 1 1 1 ]
-	// where the last matrix is the matrix representing the vertex of the unit
-	// triangle in homogeneous coordinates
-	// We would like to know the matrix Trans = [a b c; d e f; 0 0 1] to be able to map
-	// integration points in the unit triangle to integration points in our triangle.
-	// The matrix is therefore Trans = MyTri * inv(UnitTri)
-	//transform[0].x = vert2d[0].y-vert2d[0].z;
-	//transform[0].y = -vert2d[0].z;
-	//transform[0].z = vert2d[0].z;
-	//transform[1].x = -vert2d[1].z;
-	//transform[1].y = -vert2d[1].z;
-	//transform[1].z = vert2d[1].z;
-
-	// this is the jacobian of the transform (a determinant)
-	//jacobian = transform[0][0]*transform[1][1]-
-	//			transform[1][0]*transform[0][1];
-	jacobian = (vert2d02-vert2d01)*vert2d12 -
-				vert2d12*vert2d02;
-
-	result = 0;
-	for(i=0; i<m_uiNorder[rule]; i++) {
-		// calculates the transformed numerical integration point
-		//point[0] = transform[0].x * m_clsPoints[rule][i][0] +
-		//			transform[0].y * m_clsPoints[rule][i][1] +
-		//			transform[0].z * m_clsPoints[rule][i][2];
-		//point[1] = transform[1].x * m_clsPoints[rule][i][0] +
-		//			transform[1].y * m_clsPoints[rule][i][1] +
-		//			transform[1].z * m_clsPoints[rule][i][2];
-		point0 = (vert2d01-vert2d02) * m_clsPoints[rule][i][0] +
-					vert2d02 * (m_clsPoints[rule][i][2] - m_clsPoints[rule][i][1]);
-		point1 = vert2d12 * (m_clsPoints[rule][i][2] - m_clsPoints[rule][i][0] - m_clsPoints[rule][i][1]);
-
-		// calculate 3D point location
-		// optimized operation
-		//p3d = vertexes1[0] + x*point[0] + y*point[1];
-		p3d.x = vertexes1[0].x + x.x*point0 + y.x*point1;
-		p3d.y = vertexes1[0].y + x.y*point0 + y.y*point1;
-		p3d.z = vertexes1[0].z + x.z*point0 + y.z*point1;
-
-		// calculate electric field at given point due to second triangle,
-		// using the divided differences of two potential evaluations
-
-		// evaluation points above and below the target point
-		evalPlus = p3d + pnormal*h;
-		evalMinus = p3d - pnormal*h;
-		// calculate the potentials
-		potestim_p = PotentialOpt(evalPlus, vertexes2);
-		potestim_n = PotentialOpt(evalMinus, vertexes2);
-		// and get the electric field
-		pot = (potestim_n - potestim_p) / (2.0*h);
-
-		// sum up the result
-		result += m_dWeight[rule][i]*pot;
+class CTargetFieldIntegral
+{
+public:
+	CTargetFieldIntegral(C3DVector vertices[3], C3DVector direction)
+	{
+		m_clsOrigin = vertices[0];
+		for(int i = 0; i < 3; i++) {
+			m_clsOriginalVertex[i] = vertices[i];
+			m_clsVertex[i] = vertices[i] - m_clsOrigin;
+		}
+		m_clsAreaNormal = CrossProd(m_clsVertex[1], m_clsVertex[2]);
+		m_dDoubleArea = Mod(m_clsAreaNormal);
+		m_clsNormal = m_clsAreaNormal / m_dDoubleArea;
+		m_dNormalComponent = DotProd(direction, m_clsNormal);
+		for(int i = 0; i < 3; i++) {
+			C3DVector edge = m_clsVertex[(i+1)%3] - m_clsVertex[i];
+			m_dLength[i] = Mod(edge);
+			m_clsTangent[i] = edge / m_dLength[i];
+			m_dEdgeComponent[i] = DotProd(direction, CrossProd(m_clsTangent[i], m_clsNormal));
+		}
 	}
 
-	// do not forget the jacobian!
-	// note that we must divide by the unit triangle area (could be included
-	// in the weights; it is a side effect of how, in Stroud, the transformed
-	// coordinates are calculated)
-	result *= jacobian / 2.0;
-
-	// area of the first triangle
-	area1 = Mod(normal)/2.0;
-
-	// potential calculated by PotentialOpt() is already considering
-	// division by area of source panel
-	if( divideByArea == true ) {
-		result /= area1;
-	}
-	else {
-		// area of second triangle
-		//
-		// compute side vectors of triangle 2
-		side1 = vertexes2[1] - vertexes2[0];
-		side2 = vertexes2[2] - vertexes2[1];
-		// area (norm of vector product of two sides divided by 2)
-		area2 = Mod(CrossProd(side1,side2))/2.0;
-
-		result *= area2;
+	bool IsCoplanar(C3DVector vertices[3])
+	{
+		for(int i = 0; i < 3; i++) {
+			C3DVector p = vertices[i] - m_clsOrigin;
+			C3DVector b = m_clsVertex[1], c = m_clsVertex[2];
+			double permanent = (fabs(b.y*c.z) + fabs(b.z*c.y))*fabs(p.x)
+				+ (fabs(b.z*c.x) + fabs(b.x*c.z))*fabs(p.y)
+				+ (fabs(b.x*c.y) + fabs(b.y*c.x))*fabs(p.z);
+			// A conservative orient3d error bound, including coordinate subtraction.
+			// An uncertain determinant is evaluated exactly, never rounded to zero.
+			if(fabs(DotProd(p, m_clsAreaNormal)) > 16.0*DBL_EPSILON*permanent) return false;
+			if(permanent == 0.0) continue;
+			CExactPlaneDeterminant exact;
+			exact.AddDeterminant(m_clsOriginalVertex[1], m_clsOriginalVertex[2], vertices[i], 1.0);
+			exact.AddDeterminant(m_clsOriginalVertex[0], m_clsOriginalVertex[2], vertices[i], -1.0);
+			exact.AddDeterminant(m_clsOriginalVertex[0], m_clsOriginalVertex[1], vertices[i], 1.0);
+			exact.AddDeterminant(m_clsOriginalVertex[0], m_clsOriginalVertex[1], m_clsOriginalVertex[2], -1.0);
+			if(!exact.IsZero()) return false;
+		}
+		return true;
 	}
 
-	// return result
-	return( result/FOUR_PI_TIMES_E0 );
+	double Field(C3DVector point, bool coplanar)
+	{
+		point = point - m_clsOrigin;
+		C3DVector a = m_clsVertex[0] - point;
+		C3DVector b = m_clsVertex[1] - point;
+		C3DVector c = m_clsVertex[2] - point;
+		double ra = Mod(a), rb = Mod(b), rc = Mod(c);
+		double numerator = -DotProd(a, m_clsAreaNormal);
+		double denominator = ra*rb*rc + DotProd(a,b)*rc + DotProd(a,c)*rb + DotProd(b,c)*ra;
+		// Preserve an exactly coplanar source before quadrature rounding can
+		// perturb a point to either side of the one-sided 2*pi jump. No distance
+		// tolerance is used: a genuinely separated source retains its flux.
+		double omega = coplanar || numerator == 0.0 ? 0.0 : 2.0*atan2(numerator, denominator);
+		double result = m_dNormalComponent * omega;
+		for(int i = 0; i < 3; i++) {
+			if(m_dEdgeComponent[i] == 0.0) continue;
+			C3DVector r = m_clsVertex[i] - point;
+			double along = DotProd(r, m_clsTangent[i]);
+			double across = Mod(CrossProd(r, m_clsTangent[i]));
+			double integral;
+			if(across > 0.0) {
+				// Unlike log((ra+rb+l)/(ra+rb-l)), this remains finite when
+				// ra+rb rounds to l near an edge.
+				integral = asinh((along+m_dLength[i])/across) - asinh(along/across);
+			}
+			else if(along > 0.0 || along+m_dLength[i] < 0.0) {
+				integral = fabs(log(fabs((along+m_dLength[i])/along)));
+			}
+			else {
+				// A tangential field on an edge is singular; let the existing
+				// nonfinite-result error path reject it.
+				integral = HUGE_VAL;
+			}
+			result += m_dEdgeComponent[i] * integral;
+		}
+		return result;
+	}
+
+	double m_dDoubleArea;
+private:
+	C3DVector m_clsOrigin, m_clsVertex[3], m_clsOriginalVertex[3], m_clsAreaNormal, m_clsNormal, m_clsTangent[3];
+	double m_dNormalComponent, m_dLength[3], m_dEdgeComponent[3];
+};
 }
 
-// Electric field component in direction normal to one triangular patch
-// due to a second triangular patch with uniform charge
-//
-// This version uses numerical quadrature based on rule 'rule'
-// on the outer integral and divided differences of two analytical
-// integration on the potential on the inner integral,
-// to deal with singularity
-//
-// this is an optimized version of the MutualHalfNumerical() routine,
-// using also the quantities already calculated as CAutoPanel
-//
-// vertexes1 is an array of 3 3D point coordinates,
-//           corresponding to the vertexes of the first triangle
-//
-// vertexes2 is an array of 3 3D point coordinates,
-//           corresponding to the vertexes of the second triangle
-//
-// normal is the normal direction vector on the first triangular panel
-//
-// h is the distance of the observation points above and below the
-// first panel, along the normal, for usage in the divided differences
-//
-// rule is the integration formula to use, see InitNumerical()
-//
-// Overloaded version passing panels as arguments, instead of vertexes
-double CPotential::MutualDHalfNumerical(CAutoPanel panel1,
-						  CAutoPanel panel2, C3DVector pnormal, double h, int rule, bool divideByArea)
+// Mean normal field on vertexes1 due to unit total charge on vertexes2.
+// Source quadrature uses rule from InitNumerical(). The target integral is exact;
+// h is retained for source compatibility and no longer controls an approximation.
+// divideByArea=false returns the double surface integral, including 1/(4*pi*eps0).
+double CPotential::MutualDHalfNumerical(C3DVector_float vertexes1[3],
+		C3DVector_float vertexes2[3], C3DVector pnormal, double h, int rule, bool divideByArea)
 {
-	C3DVector side1, side2, side3, x, y;
-	C3DVector p3d, evalPlus, evalMinus;
-	double potestim_p, potestim_n;
-	//C3DVector vert2d[2], transform[2];
-	//CLin_Matrix vert2d(2,3), transform;
-	// this is the transpose of the inverse of [0,1,1;1,0,1;0,0,1],
-	// the matrix representing the unit triangle
-	//static const double unittranmtx[9] = { 0, 1, 0,
-	//                                      1, 0, 0,
-	//						             -1,-1, 1};
-	//CLin_Matrix unittranmtx(3, 3, tranmatrix);
-	double jacobian, pot, result, point0, point1;
-	double vert2d01, vert2d02, vert2d12;
-	unsigned int i;
-
-	// compute side vectors of triangle 1
-	side1 = panel1.m_clsVertex[1] - panel1.m_clsVertex[0];
-	side3 = panel1.m_clsVertex[0] - panel1.m_clsVertex[2];
-
-	// sidelen1, also used below as coordinate of the first triangle in local 2D frame
-	vert2d01 = Mod(side1);
-
-	// compute local x, y axes versors; x is along side1,
-	// y is perp. to side1 in counter-clockwise direction
-//	x = side1 / panel1.m_dSideLen[0];
-	x = side1 / vert2d01;
-	// note that, since x and z are unit vectors, y is too
-	// optimized operation - but seems no apparent benefit
-	//y = CrossProd(x, panel1.m_clsNormal);
-	C3D_CROSSPROD(y,x,panel1.m_clsNormal)
-
-	// calculates the coordinates of the first triangle in local 2D frame;
-	// the origin is located on first vertex.
-	// Therefore vert2d is an array of 3 2D point coordinates,
-	// corresponding to the vertexes of the intergration triangular domain, [x1,y1;x2,y2;x3,y3]
-	//
-	// old assignment, moved above
-	//vert2d01 = panel1.m_dSideLen[0];
-	// optimized operation - but seems no apparent benefit
-	//vert2d[0].z = -DotProd(side3,x);
-	//vert2d[1].z = -DotProd(side3,y);
-	vert2d02 = -C3D_DOTPROD(side3,x);
-	vert2d12 = -C3D_DOTPROD(side3,y);
-
-	// calculates the coordinate transformation needed
-	// to map the first triangle to a unit triangle
-	// Basically, this is the following operation
-	//
-	//	static const double unittranmtx[9] = { 0, 1, 0,
-	//	                                      1, 0, 0,
-	//							             -1,-1, 1};
-	// 	transform = vert2d * unittranmtx;
-	//
-	// where unittranmtx is the transpose of the inverse of [0,1,1;1,0,1;0,0,1],
-	// the matrix representing the unit triangle
-	//
-	// Explanation: we are in 2D, but we use homogeneous coordinates.
-	// The mapping is a linear transformation, i.e. to map a point (xt, yt, 1)
-	// from a unit triangle to a point (x0, y0, 1) on a general triangle we use:
-	// x0 = a*xt + b*yt + c
-	// y0 = d*xt + e*yt + f
-	// Therefore to map the corners of a unit triangle to the corners of a general
-	// triangle we have:
-	// [ x0 x1 x2 ]    [ a b c ]   [ 0 1 0 ]
-	// [ y0 y1 y2 ]  = [ d e f ] * [ 1 0 0 ]
-	// [  1  1  1 ]    [ 0 0 1 ]   [ 1 1 1 ]
-	// where the last matrix is the matrix representing the vertex of the unit
-	// triangle in homogeneous coordinates
-	// We would like to know the matrix Trans = [a b c; d e f; 0 0 1] to be able to map
-	// integration points in the unit triangle to integration points in our triangle.
-	// The matrix is therefore Trans = MyTri * inv(UnitTri)
-	//transform[0].x = vert2d[0].y-vert2d[0].z;
-	//transform[0].y = -vert2d[0].z;
-	//transform[0].z = vert2d[0].z;
-	//transform[1].x = -vert2d[1].z;
-	//transform[1].y = -vert2d[1].z;
-	//transform[1].z = vert2d[1].z;
-
-	// this is the jacobian of the transform (a determinant)
-	//jacobian = transform[0][0]*transform[1][1]-
-	//			transform[1][0]*transform[0][1];
-	jacobian = (vert2d02-vert2d01)*vert2d12 -
-				vert2d12*vert2d02;
-
-	result = 0;
-	for(i=0; i<m_uiNorder[rule]; i++) {
-		// calculates the transformed numerical integration point
-		// calculates the transformed numerical integration point
-		//point[0] = transform[0].x * m_clsPoints[rule][i][0] +
-		//			transform[0].y * m_clsPoints[rule][i][1] +
-		//			transform[0].z * m_clsPoints[rule][i][2];
-		//point[1] = transform[1].x * m_clsPoints[rule][i][0] +
-		//			transform[1].y * m_clsPoints[rule][i][1] +
-		//			transform[1].z * m_clsPoints[rule][i][2];
-		point0 = (vert2d01-vert2d02) * m_clsPoints[rule][i][0] +
-					vert2d02 * (m_clsPoints[rule][i][2] - m_clsPoints[rule][i][1]);
-		point1 = vert2d12 * (m_clsPoints[rule][i][2] - m_clsPoints[rule][i][0] - m_clsPoints[rule][i][1]);
-
-		// calculate 3D point location
-		// optimized operation
-		//p3d = panel1.m_clsVertex[0] + x*point[0] + y*point[1];
-		p3d.x = panel1.m_clsVertex[0].x + x.x*point0 + y.x*point1;
-		p3d.y = panel1.m_clsVertex[0].y + x.y*point0 + y.y*point1;
-		p3d.z = panel1.m_clsVertex[0].z + x.z*point0 + y.z*point1;
-
-		// calculate electric field at given point due to second triangle,
-		// using the divided differences of two potential evaluations
-
-		// evaluation points above and below the target point
-		evalPlus = p3d + pnormal*h;
-		evalMinus = p3d - pnormal*h;
-		// calculate the potentials
-		potestim_p = PotentialOpt(evalPlus, panel2);
-		potestim_n = PotentialOpt(evalMinus, panel2);
-		// and get the electric field
-		pot = (potestim_n - potestim_p) / (2.0*h);
-
-		// sum up the result
-		result += m_dWeight[rule][i]*pot;
+	(void)h;
+	C3DVector target[3], source[3];
+	for(int i = 0; i < 3; i++) {
+		target[i] = C3DVector(vertexes1[i].x, vertexes1[i].y, vertexes1[i].z);
+		source[i] = C3DVector(vertexes2[i].x, vertexes2[i].y, vertexes2[i].z);
 	}
-
-	// do not forget the jacobian!
-	// note that we must divide by the unit triangle area (could be included
-	// in the weights; it is a side effect of how, in Stroud, the transformed
-	// coordinates are calculated)
-	result *= jacobian / 2.0;
-
-	// potential calculated by PotentialOpt() is already considering
-	// division by area of source panel
-	if( divideByArea == true ) {
-		result /= panel1.GetDimension();
+	CTargetFieldIntegral field(target, pnormal);
+	bool coplanar = field.IsCoplanar(source);
+	C3DVector side1 = source[1] - source[0], side2 = source[2] - source[0];
+	double result = 0.0;
+	for(unsigned int i = 0; i < m_uiNorder[rule]; i++) {
+		double x = m_clsPoints[rule][i].x, y = m_clsPoints[rule][i].y;
+		C3DVector point = source[0] + side1*x + side2*(1.0-x-y);
+		// Interchanging source and target reverses the electric-field vector.
+		result -= m_dWeight[rule][i] * field.Field(point, coplanar);
 	}
-	else {
-		result *= panel2.GetDimension();
-	}
+	if(divideByArea) result *= 2.0 / field.m_dDoubleArea;
+	else result *= Mod(CrossProd(side1, side2)) / 2.0;
+	return result / FOUR_PI_TIMES_E0;
+}
 
-	// return result
-	return( result/FOUR_PI_TIMES_E0 );
+// Both entry points share the same integration and normalization.
+double CPotential::MutualDHalfNumerical(CAutoPanel panel1,
+		CAutoPanel panel2, C3DVector pnormal, double h, int rule, bool divideByArea)
+{
+	return MutualDHalfNumerical(panel1.m_clsVertex, panel2.m_clsVertex, pnormal, h, rule, divideByArea);
 }
 
 // Mutual cofficient of potential between two triangular patches
