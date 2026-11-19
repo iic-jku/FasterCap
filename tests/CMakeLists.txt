@@ -12,6 +12,10 @@ endif()
 
 # unit tests of the solver code; in GUI builds the solver's messages need the GUI application
 if(FASTFIELDSOLVERS_HEADLESS)
+    add_executable(test_console test_console.cpp)
+    target_link_libraries(test_console FasterCapConsole FasterCapSolver)
+    add_test(NAME console COMMAND test_console)
+    set_tests_properties(console PROPERTIES TIMEOUT 10)
     add_executable(test_potential test_potential.cpp)
     target_link_libraries(test_potential FasterCapSolver)
     add_test(NAME potential COMMAND test_potential)
@@ -36,6 +40,14 @@ if(UNIX)
     add_test(NAME resource_guard
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_resource_guard.py)
     set_tests_properties(resource_guard PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+endif()
+
+# Empty input must print usage and exit 64 before any solver work.
+if(FASTFIELDSOLVERS_HEADLESS)
+    add_test(NAME empty_command_line
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_empty_command_line.py
+            $<TARGET_FILE:FasterCap>)
+    set_tests_properties(empty_command_line PROPERTIES TIMEOUT 40)
 endif()
 
 # fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [INTERRUPT] [NO_MATRIX]
