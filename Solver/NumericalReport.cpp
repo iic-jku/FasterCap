@@ -16,6 +16,7 @@
 #include <omp.h>
 #include <wx/version.h>
 #include <wx/log.h>
+#include <wx/filename.h>
 
 namespace {
 
@@ -235,7 +236,20 @@ bool CNumericalReport::Open(const CAutoRefGlobalVars &options)
 	if(m_file.IsOpened()) m_file.Close();
 	m_ulIterations = 0;
 	// Exclusive creation also protects referenced inputs and their hard/symbolic aliases.
-	if(!m_file.Create(options.m_sReportFile, false)) return false;
+	wxString reportPath(options.m_sReportFile);
+#ifdef __WXMSW__
+	// The Windows CRT needs an absolute extended path beyond MAX_PATH. Keep
+	// ordinary paths unchanged, and let Create report failure if resolution fails.
+	wxFileName absolute(reportPath);
+	if(absolute.MakeAbsolute()) {
+		wxString fullPath = absolute.GetFullPath();
+		if(fullPath.length() >= 260 && !fullPath.StartsWith(wxT("\\\\?\\"))) {
+			reportPath = fullPath.StartsWith(wxT("\\\\"))
+				? wxT("\\\\?\\UNC\\") + fullPath.Mid(2) : wxT("\\\\?\\") + fullPath;
+		}
+	}
+#endif
+	if(!m_file.Create(reportPath, false)) return false;
 	m_output.reset(new wxFileOutputStream(m_file));
 	m_buffer.reset(new wxBufferedOutputStream(*m_output));
 	m_stream.reset(new wxStdOutputStream(*m_buffer));

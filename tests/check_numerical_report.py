@@ -150,6 +150,9 @@ def solver_checks(executable, directory):
     long_report = long_directory / "result.json"
     run(executable, directory, [path.name, "--report=" + str(long_report.relative_to(directory))])
     assert read_report(long_report)["status"]["exit_code"] == 0
+    long_bytes = long_report.read_bytes()
+    run(executable, directory, [path.name, "--report=" + str(long_report.relative_to(directory))], 74)
+    assert long_report.read_bytes() == long_bytes, "long report path bypassed exclusive creation"
     run(executable, directory, [path.name, "--report=nonexistent/output.json"], 74)
     run(executable, directory, [path.name, "--report=" + path.name], 74)
     assert path.read_bytes() == input_bytes, "report overwrote primary input"

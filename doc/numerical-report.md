@@ -11,6 +11,8 @@ A report-open or report-write failure returns `FC_FILE_ERROR` (74). Command-line
 `FC_COMMAND_LINE_ERROR` (64) before starting a report. The shared command-line tokenizer retains dynamically sized argument storage and rejects
 unterminated quotes. Report paths containing literal double quotes are rejected. Operating-system
 path-length limits produce a file error; no artificial 4093-byte argument limit is imposed.
+On Windows, long report paths use the absolute extended-path form, including UNC paths;
+the same exclusive-creation checks still apply.
 
 The report uses JSON schema version 1:
 
