@@ -41,6 +41,18 @@ endif()
 add_test(NAME check_capacitance
     COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/test_check_capacitance.py)
 
+if(UNIX)
+    add_test(NAME resource_guard
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_resource_guard.py)
+    set_tests_properties(resource_guard PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+endif()
+
+# #43: command-line error text is data, including percent conversions.
+add_test(NAME error_format
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_error_format.py
+        $<TARGET_FILE:FasterCap>)
+set_tests_properties(error_format PROPERTIES TIMEOUT 30)
+
 # Empty input must print usage and exit 64 before any solver work.
 if(FASTFIELDSOLVERS_HEADLESS)
     add_test(NAME empty_command_line
@@ -209,3 +221,10 @@ endforeach()
 foreach(option -ps-1 -ps15 -ps4097 -ps16.5 -ps16x -pb-1 -pb1 -pb129 -pb2x)
     fastercap_test(out_of_range_option${option} three_cubes 0 NO_MATRIX EXIT_CODE 64 ${option})
 endforeach()
+
+# Construction/destruction and cleanup before any input need no disk blocks.
+if(FASTFIELDSOLVERS_HEADLESS)
+    add_executable(test_refiner_initialization test_refiner_initialization.cpp)
+    target_link_libraries(test_refiner_initialization FasterCapSolver)
+    add_test(NAME refiner_initialization COMMAND test_refiner_initialization)
+endif()

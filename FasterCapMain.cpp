@@ -1347,7 +1347,7 @@ HRESULT STDMETHODCALLTYPE IFasterCap::Run(BSTR commandLine, VARIANT_BOOL *ret)
 			// debug
 			ErrMsg("Error: parsing the input command line provided via automation failed with the following error:\n");
 			// print parser error
-			ErrMsg((const char*)errMsg);
+			ErrMsg("%s", (const char*)errMsg);
 
 			(Globals::GetApp())->m_iRetStatus = FC_COMMAND_LINE_ERROR;
 		}
