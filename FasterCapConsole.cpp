@@ -128,7 +128,7 @@ int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
 			LogMsg("\n\n");
 
 			// print error
-			ErrMsg((const char*)errMsg);
+			ErrMsg("%s", (const char*)errMsg);
 			LogMsg("Usage: %s <input file> [-a<relative error>] [-ap]\n", (const char*)argv[0]);
 			LogMsg("                 [-m<mesh>] [-mc<mesh curvature] [-t<tolerance>]\n");
 			LogMsg("                 [-d<interaction coeff>] [-f<outofcore>] [-g]\n");
