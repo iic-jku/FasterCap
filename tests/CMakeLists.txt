@@ -32,6 +32,12 @@ if(NOT Python3_Interpreter_FOUND)
     return()
 endif()
 
+if(UNIX)
+    add_test(NAME resource_guard
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_resource_guard.py)
+    set_tests_properties(resource_guard PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+endif()
+
 # fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [INTERRUPT] [NO_MATRIX]
 #                [DUMP_INPUT] [OUTPUT_FILES] [EXIT_CODE <code>] [REFERENCE <geometry>]
 #                [NAMES <name,...>] [SAME_AS <other options>] [LONG_PATH <length>]
