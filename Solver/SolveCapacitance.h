@@ -55,7 +55,7 @@ class CSolveCap
 
 public:
 	CSolveCap();
-	~CSolveCap();
+	virtual ~CSolveCap();
 	int Run(CAutoRefGlobalVars globalVars);
 	int SolveMain(CAutoRefGlobalVars globalVars, CLin_Matrix &capRe, CLin_Matrix &capIm);
 	void CopyCondNames(StlStringList &stringList);
@@ -84,6 +84,7 @@ protected:
 	void MakePreconditioner();
 	int Solve(CLin_Matrix *cRe, CLin_Matrix *cIm);
 	int AllocateMemory();
+	int AllocateGmresMemory(unsigned long size);
 	void RecurseHierSuperPre(CAutoPanel* panel);
 	void IncrementSupPreNum();
 	void RecurseComputePrecond(CAutoElement* element);
@@ -95,6 +96,13 @@ protected:
 	int gmresPrecondSFastAll(CLin_Vector *b, CLin_Vector *x, double gmresTol);
 	int gmresFlexPrecondSFastAll(CLin_Vector *b, CLin_Vector *x, double gmresTol);
 	int gmresPrecondSFastAllX0(CLin_Vector *b, CLin_Vector *x, CLin_Vector *x0);
+	// Both GMRES variants use the same Arnoldi and residual checks. The operator hooks
+	// also let small linear-system tests exercise the production implementation.
+	int GmresSolve(CLin_Vector *b, CLin_Vector *x, double gmresTol, bool flexible, CLin_Vector *x0 = NULL);
+	int GmresSolution(CLin_Vector *x, long iterations, bool flexible);
+	int GmresResidual(CLin_Vector *b, CLin_Vector *x, double &normr);
+	virtual int MultiplyGmresMatrix(CLin_Vector *result, CLin_Vector *x);
+	virtual void PreconditionGmresVector(CLin_Vector *result, CLin_Vector *x);
 	void ComputePrecondVectFast(CLin_Vector *Pq, CLin_Vector *q, unsigned char precondType);
 
 #ifdef DEBUG_DUMP_POT
