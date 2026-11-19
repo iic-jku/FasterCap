@@ -18,6 +18,9 @@ if(FASTFIELDSOLVERS_HEADLESS)
     add_executable(test_triangulate test_triangulate.cpp)
     target_link_libraries(test_triangulate FasterCapSolver)
     add_test(NAME triangulate COMMAND test_triangulate)
+    add_executable(test_preconditioner_selection test_preconditioner_selection.cpp)
+    target_link_libraries(test_preconditioner_selection FasterCapSolver)
+    add_test(NAME preconditioner_selection COMMAND test_preconditioner_selection)
 endif()
 
 # -bv prints only the version; headless builds started a run without input file instead
@@ -31,6 +34,12 @@ if(NOT Python3_Interpreter_FOUND)
     message(STATUS "Python 3 not found: no regression tests")
     return()
 endif()
+
+# #44: implicit Jacobi is replaced by an explicit selection; block combinations fail.
+add_test(NAME preconditioner_options
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_preconditioner_options.py
+        $<TARGET_FILE:FasterCap>)
+set_tests_properties(preconditioner_options PROPERTIES TIMEOUT 60)
 
 # fastercap_test(<name> <geometry> <tolerance> [OUT_OF_CORE] [INTERRUPT] [NO_MATRIX]
 #                [DUMP_INPUT] [OUTPUT_FILES] [EXIT_CODE <code>] [REFERENCE <geometry>]

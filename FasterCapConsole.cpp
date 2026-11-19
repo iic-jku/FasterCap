@@ -261,7 +261,7 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 	std::vector<char> argBuffer(strlen(commandStr) + 1);
 	char *argStr = argBuffer.data(), *cmdStr;
 	int res, skip;
-	bool cmderr;
+	bool cmderr, explicitPreconditioner = false;
 
     // clean error message
     errMsg.Clear();
@@ -312,6 +312,11 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 
 			// '-p' is type of preconditioner
 			else if(argStr[1] == 'p') {
+				// Jacobi is a default, not an additional explicitly selected method.
+				if(!explicitPreconditioner) {
+					globalVars.m_ucPrecondType = AUTOREFINE_PRECOND_NONE;
+					explicitPreconditioner = true;
+				}
 				if(argStr[2] == 'N' || argStr[2] == 'n') {
 					globalVars.m_ucPrecondType = AUTOREFINE_PRECOND_NONE;
 				}
