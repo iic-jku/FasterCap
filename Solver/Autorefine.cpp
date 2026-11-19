@@ -225,12 +225,12 @@ void CAutoRefine::Clean(int command)
 		DeletePanelsAndConductors();
 		// delete nodes vector
 		if(m_pNodes != NULL) {
-			delete m_pNodes;
+			delete [] m_pNodes;
 			m_pNodes = NULL;
 		}
 		// delete permittivity vector
 		if(m_pucDielIndex != NULL) {
-			delete m_pucDielIndex;
+			delete [] m_pucDielIndex;
 			m_pucDielIndex = NULL;
 		}
 		g_clsMemUsage.m_ulPanelsMem = 0;
@@ -267,9 +267,9 @@ void CAutoRefine::Clean(int command)
 			}
 		}
 		// deallocate the memory
-		delete m_ulUniqueLinkChunkIDs;
+		delete [] m_ulUniqueLinkChunkIDs;
 		m_ulUniqueLinkChunkIDs = NULL;
-		delete m_ulUniquePotChunkIDs;
+		delete [] m_ulUniquePotChunkIDs;
 		m_ulUniquePotChunkIDs = NULL;
 	}
 
@@ -291,19 +291,19 @@ void CAutoRefine::DeleteLinkArray(unsigned int level)
 	if(m_dPotCoeffLinks[level] != NULL) {
 		for(j=0; j<m_ulLinkChunkNum[level]; j++) {
 			if(m_dPotCoeffLinks[level][j] != NULL) {
-				delete m_dPotCoeffLinks[level][j];
+				delete [] m_dPotCoeffLinks[level][j];
 			}
 		}
-		delete m_dPotCoeffLinks[level];
+		delete [] m_dPotCoeffLinks[level];
 		m_dPotCoeffLinks[level] = NULL;
 	}
 	if(m_pdPanelPtrLinks[level] != NULL) {
 		for(j=0; j<m_ulLinkChunkNum[level]; j++) {
 			if(m_pdPanelPtrLinks[level][j] != NULL) {
-				delete m_pdPanelPtrLinks[level][j];
+				delete [] m_pdPanelPtrLinks[level][j];
 			}
 		}
-		delete m_pdPanelPtrLinks[level];
+		delete [] m_pdPanelPtrLinks[level];
 		m_pdPanelPtrLinks[level] = NULL;
 	}
 }
@@ -1593,11 +1593,11 @@ void CAutoRefine::DebugOutputTree2()
 	fclose(fp);
 
 	for(i=0; i<m_ulPanelNum[m_ucInteractionLevel]; i++) {
-		delete m_pBlockMtx[i];
-		delete m_pElemMtx[i];
+		delete [] m_pBlockMtx[i];
+		delete [] m_pElemMtx[i];
 	}
-	delete m_pBlockMtx;
-	delete m_pElemMtx;
+	delete [] m_pBlockMtx;
+	delete [] m_pElemMtx;
 }
 
 void CAutoRefine::DebugOutputPanels2(CAutoPanel *panel, long &blockNo)
