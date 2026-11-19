@@ -150,9 +150,12 @@ file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/$<CONFIG>/BuildConfi
 target_include_directories(FasterCapSolver PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/generated" "${CMAKE_CURRENT_BINARY_DIR}/generated/$<CONFIG>")
 
+# Compile the console parser once for the executable and its unit tests.
+add_library(FasterCapConsole OBJECT FasterCapConsole.cpp FasterCapConsole.h)
+target_link_libraries(FasterCapConsole PUBLIC FasterCapSolver)
+
 set(FastFieldSolvers_Sources ${FastFieldSolvers_Sources}
-    FasterCapConsole.cpp
-    FasterCapConsole.h
+    FasterCapConsoleMain.cpp
     test.cpp
     test.h)
 
@@ -179,6 +182,6 @@ if(${FASTFIELDSOLVERS_HEADLESS} MATCHES OFF)
 endif()
 
 add_executable (FasterCap ${FastFieldSolvers_Sources})
-target_link_libraries(FasterCap FasterCapSolver)
+target_link_libraries(FasterCap FasterCapConsole FasterCapSolver)
 
 add_subdirectory(tests)

@@ -651,6 +651,7 @@
 			<Option target="Win64_Release" />
 		</Unit>
 		<Unit filename="FasterCapConsole.cpp" />
+		<Unit filename="FasterCapConsoleMain.cpp" />
 		<Unit filename="FasterCapConsole.h" />
 		<Unit filename="FasterCapGlobal.cpp" />
 		<Unit filename="FasterCapGlobal.h" />

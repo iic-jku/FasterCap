@@ -27,6 +27,7 @@
 #include "Solver/SolveCapacitance.h"
 
 #include <cmath>
+#include <cctype>
 #include <csignal>
 #include <vector>
 
@@ -39,41 +40,6 @@ static void StopOnSignal(int sig)
 }
 
 #ifdef FCG_HEADLESS
-
-#include <iostream>
-#include <wx/debug.h>
-
-// failed asserts are printed, not shown in a dialog: wxWidgets opens one on Windows,
-// also in console programs, and nobody closes it in a batch run
-static void ConsoleAssertHandler(const wxString& file, int line, const wxString& func,
-                                 const wxString& cond, const wxString& msg)
-{
-    std::cerr << file << "(" << line << "): assert \"" << cond << "\" failed in "
-              << func << "(): " << msg << std::endl;
-}
-
-int main(int argc, char **argv)
-{
-    int i, ret;
-    char bOption;
-
-    wxSetAssertHandler(ConsoleAssertHandler);
-
-    // the character after '-b' ('-b?', '-bv'), as FasterCapApp::OnInit() finds it for the GUI
-    bOption = '\0';
-    for(i=1; i<argc; i++) {
-        if(argv[i][0] == '-' && argv[i][1] == 'b') {
-            bOption = argv[i][2];
-        }
-    }
-
-    FasterCapConsole console;
-
-    ret = console.main(argc, argv, bOption);
-
-    return ret;
-}
-
 int FasterCapConsole::main(int& argc, char **argv, char bOption)
 #else
 int FasterCapConsole::main(int& argc, wxChar **argv, char bOption)
@@ -441,11 +407,15 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 // reject an unterminated quote instead of silently changing an output path.
 int FasterCapConsole::getSubstring(const char *buffer, char *substr, int *skip)
 {
-	int position = strspn(buffer, " \t\r\n");
+	int position = 0;
 	int length = 0;
 	bool quoted = false;
 	substr[0] = '\0';
-	*skip = position;
+	// EOF consumes no argument, even if only whitespace remains.
+	*skip = 0;
+	while(std::isspace(static_cast<unsigned char>(buffer[position]))) {
+		++position;
+	}
 	if(buffer[position] == '\0') return EOF;
 
 	for(; buffer[position] != '\0'; ++position) {
@@ -458,7 +428,7 @@ int FasterCapConsole::getSubstring(const char *buffer, char *substr, int *skip)
 				break;
 			}
 		}
-		else if(!quoted && (c == ' ' || c == '\t' || c == '\r' || c == '\n')) {
+		else if(!quoted && std::isspace(static_cast<unsigned char>(c))) {
 			break;
 		}
 		else {
