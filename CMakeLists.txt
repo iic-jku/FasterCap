@@ -119,9 +119,12 @@ add_library(FasterCapSolver OBJECT ${FasterCap_Sources} FasterCapGlobal.cpp Fast
 target_compile_options(FasterCapSolver PUBLIC ${FASTFIELDSOLVERS_COMPILE_OPTIONS})
 target_link_libraries(FasterCapSolver PUBLIC ${EXTRA_LIBS} ${WXWIDGETS_LIBS} ${EIGEN_LIBS})
 
+# Compile the console parser once for the executable and its unit tests.
+add_library(FasterCapConsole OBJECT FasterCapConsole.cpp FasterCapConsole.h)
+target_link_libraries(FasterCapConsole PUBLIC FasterCapSolver)
+
 set(FastFieldSolvers_Sources ${FastFieldSolvers_Sources}
-    FasterCapConsole.cpp
-    FasterCapConsole.h
+    FasterCapConsoleMain.cpp
     test.cpp
     test.h)
 
@@ -148,6 +151,6 @@ if(${FASTFIELDSOLVERS_HEADLESS} MATCHES OFF)
 endif()
 
 add_executable (FasterCap ${FastFieldSolvers_Sources})
-target_link_libraries(FasterCap FasterCapSolver)
+target_link_libraries(FasterCap FasterCapConsole FasterCapSolver)
 
 add_subdirectory(tests)
