@@ -184,3 +184,6 @@ endforeach()
 foreach(option -ps-1 -ps15 -ps4097 -ps16.5 -ps16x -pb-1 -pb1 -pb129 -pb2x)
     fastercap_test(out_of_range_option${option} three_cubes 0 NO_MATRIX EXIT_CODE 64 ${option})
 endforeach()
+
+# Closed conductor fixtures need consistently outward face normals.
+add_test(NAME geometry_fixtures COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_geometries.py)

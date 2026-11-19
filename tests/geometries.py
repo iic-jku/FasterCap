@@ -37,15 +37,16 @@ def _write_list(path, lines):
 
 
 def cube_panels(name, side):
+    """Six faces with outward normals, needed for the solver's averaged panel normals."""
     def v(x, y, z):
         return (x * side, y * side, z * side)
 
     faces = [
-        [v(0, 0, 0), v(1, 0, 0), v(1, 1, 0), v(0, 1, 0)],
+        [v(0, 0, 0), v(0, 1, 0), v(1, 1, 0), v(1, 0, 0)],
         [v(0, 0, 1), v(1, 0, 1), v(1, 1, 1), v(0, 1, 1)],
         [v(0, 0, 0), v(1, 0, 0), v(1, 0, 1), v(0, 0, 1)],
-        [v(0, 1, 0), v(1, 1, 0), v(1, 1, 1), v(0, 1, 1)],
-        [v(0, 0, 0), v(0, 1, 0), v(0, 1, 1), v(0, 0, 1)],
+        [v(0, 1, 0), v(0, 1, 1), v(1, 1, 1), v(1, 1, 0)],
+        [v(0, 0, 0), v(0, 0, 1), v(0, 1, 1), v(0, 1, 0)],
         [v(1, 0, 0), v(1, 1, 0), v(1, 1, 1), v(1, 0, 1)],
     ]
     return [("Q", name, face) for face in faces]
