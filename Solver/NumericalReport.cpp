@@ -15,6 +15,7 @@
 #include <vector>
 #include <omp.h>
 #include <wx/version.h>
+#include <wx/log.h>
 
 namespace {
 
@@ -225,6 +226,9 @@ CNumericalReport::CNumericalReport() : m_ulIterations(0)
 
 bool CNumericalReport::Open(const CAutoRefGlobalVars &options)
 {
+	// The caller uses FasterCap's error path. wxFile's fallback logger can open
+	// a modal dialog on Windows even when the solver is running in batch mode.
+	wxLogNull noFileLog;
 	m_stream.reset();
 	m_buffer.reset();
 	m_output.reset();
@@ -254,6 +258,7 @@ bool CNumericalReport::AddIteration(const CLin_Matrix &real, const CLin_Matrix &
 	const StlStringList &names, const CAutoRefGlobalVars &options,
 	unsigned char solverType, unsigned long panels, unsigned long links, int status)
 {
+	wxLogNull noFileLog;
 	const double scale = solverType == SOLVERGLOBAL_2DSOLVER ? TWO_PI_TIMES_E0 : 1.0;
 	if(m_ulIterations != 0) *m_stream << ",\n";
 	*m_stream << "{\"iteration\":" << m_ulIterations << ",\"solve_status\":";
@@ -294,6 +299,7 @@ bool CNumericalReport::AddIteration(const CLin_Matrix &real, const CLin_Matrix &
 
 bool CNumericalReport::Close(int status)
 {
+	wxLogNull noFileLog;
 	*m_stream << "\n],\"status\":";
 	WriteStatus(*m_stream, status);
 	*m_stream << ",\"last_completed_iteration\":";

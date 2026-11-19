@@ -4,6 +4,7 @@
 #include <limits>
 #include <locale>
 #include <string>
+#include <wx/log.h>
 
 #include "NumericalReport.h"
 
@@ -11,6 +12,14 @@ class CCommaDecimal : public std::numpunct<char>
 {
 protected:
 	char do_decimal_point() const { return ','; }
+};
+
+class CReportLog : public wxLog
+{
+public:
+	unsigned long m_ulMessages = 0;
+protected:
+	void DoLogText(const wxString &) override { ++m_ulMessages; }
 };
 
 static bool writeReport(const std::string &directory, const char *filename,
@@ -62,5 +71,20 @@ int main(int argc, char **argv)
 	options.m_sReportFile = std::string(argv[1]) + "/empty.json";
 	CNumericalReport report;
 	if(!report.Open(options) || !report.Close(FC_CANNOT_OPEN_FILE)) return 1;
+	// The caller reports file errors through FasterCap's error path. wxWidgets'
+	// default fallback can display a modal dialog even in a Windows batch run.
+	options.m_sReportFile = std::string(argv[1]) + "/missing/report.json";
+	CReportLog log;
+	wxLog *previous = wxLog::SetActiveTarget(&log);
+	bool enabled = wxLog::EnableLogging(true);
+	bool opened = report.Open(options);
+	wxLog::FlushActive();
+	bool restored = wxLog::IsEnabled();
+	wxLog::EnableLogging(enabled);
+	wxLog::SetActiveTarget(previous);
+	if(opened || log.m_ulMessages != 0 || !restored) {
+		std::fprintf(stderr, "report file error escaped to wxWidgets logging\n");
+		return 1;
+	}
 	return 0;
 }
