@@ -184,3 +184,10 @@ endforeach()
 foreach(option -ps-1 -ps15 -ps4097 -ps16.5 -ps16x -pb-1 -pb1 -pb129 -pb2x)
     fastercap_test(out_of_range_option${option} three_cubes 0 NO_MATRIX EXIT_CODE 64 ${option})
 endforeach()
+
+# Construction/destruction and cleanup before any input need no disk blocks.
+if(FASTFIELDSOLVERS_HEADLESS)
+    add_executable(test_refiner_initialization test_refiner_initialization.cpp)
+    target_link_libraries(test_refiner_initialization FasterCapSolver)
+    add_test(NAME refiner_initialization COMMAND test_refiner_initialization)
+endif()
