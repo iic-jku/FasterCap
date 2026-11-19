@@ -20,7 +20,7 @@ This is the fork maintained by the [Institute for Integrated Circuits and Quantu
 
 The [releases](https://github.com/iic-jku/FasterCap/releases) hold console builds without GUI:
 
-- Ubuntu 22.04 and 24.04, x86-64: a `.deb` package, e.g. `sudo apt install ./FasterCap_6.2.0_amd64_ubuntu-24.04.deb`, or a `.tar.gz`
+- Ubuntu 22.04 and 24.04, x86-64: a `.deb` package, e.g. `sudo apt install ./FasterCap_6.3.0_amd64_ubuntu-24.04.deb`, or a `.tar.gz`
 - macOS, arm64: a `.tar.gz` with the executable, which needs Homebrew's `libomp` and `wxwidgets` (`brew install libomp wxwidgets`)
 - Windows, x64: a `.tar.gz` with `FasterCap.exe` and the OpenBLAS and wxWidgets DLLs, which needs the Microsoft Visual C++ 2015-2022 Redistributable (x64), also for OpenMP
 

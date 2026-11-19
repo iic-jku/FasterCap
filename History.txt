@@ -4,6 +4,23 @@ Copyright (c) 2019
 FastFieldSolvers S.R.L.  http://www.fastfieldsolvers.com
 ==================
 
+Version 6.3.0, 2026/11/19
+- Optional `--report=<path>` writes full-precision real/complex matrices, solver status, quality diagnostics and build provenance as JSON
+- Existing console/CSV formats are retained
+- `GMRES` verifies the actual residual before accepting convergence and handles breakdown and nonfinite arithmetic
+- Numerical results, iteration counts and failure decisions can change with residual verification
+- The first explicit preconditioner replaces implicit Jacobi
+- Unsupported block combinations stop with exit code 64 before input is read
+- Reject trailing characters on flags and numeric options, invalid preconditioner dimensions, and invalid GUI option values
+- Empty or whitespace-only startup prints usage and exits 64
+- Handle long arguments safely, treat error text as data, and reject oversized nested conductor names with exit code 74
+- Initialize refiner cleanup state and match array allocations with array deletion
+- Make hierarchy partitioning progress when centroids coincide
+- Correct cube-fixture winding and reject malformed/nonfinite matrix output in tests
+- Register feature tests independently to avoid shared-list merge conflicts
+- Add an opt-in local resource guard for serial bounded builds and solver experiments
+- Platform-sensitive adaptive results (#10), the reported concentric-sphere refinement crash (#7), and general dielectric reciprocity errors remain unresolved
+
 Version 6.2.1, 2026/10/29
 - Release assets: on Windows the new unit tests hung without their DLLs, so 6.2.0 was withdrawn before its assets were built
 
