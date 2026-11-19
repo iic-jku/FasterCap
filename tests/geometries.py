@@ -219,6 +219,58 @@ COATED_SPHERE_LOSSY_C = FOUR_PI_EPS0 / ((1.0 / RADIUS - 1.0 / COAT_RADIUS) / LOS
                                         + 1.0 / COAT_RADIUS)
 
 
+def permittivity_text(value):
+    """FasterCap writes the imaginary unit before the magnitude, e.g. '4-j1'."""
+    value = complex(value)
+    if value.imag == 0:
+        return "%g" % value.real
+    return "%g%sj%g" % (value.real, "-" if value.imag < 0 else "+", abs(value.imag))
+
+
+def coated_spheres_geometry(permittivity, coat_radius=2.0, depth=3, split_coat=False,
+                            offset=(0.0, 0.0, 0.0)):
+    """Nested conductors with a coat; offset moves the inner conductor and its coat."""
+    inner_radius, outer_radius = 1.0, 3.0
+
+    def write(directory):
+        for name, radius in (("inner", inner_radius), ("coat", coat_radius), ("outer", outer_radius)):
+            panels = icosphere_panels(name, radius, depth)
+            if name != "outer":
+                panels = [(kind, label, [tuple(x + shift for x, shift in zip(v, offset))
+                                         for v in vertices])
+                          for kind, label, vertices in panels]
+            if split_coat and name == "coat":
+                # Bisect each planar facet without changing the interface geometry.
+                # Depth 2 then has 1280 total panels: just over one link block.
+                split = []
+                for kind, label, (a, b, c) in panels:
+                    midpoint = tuple((x+y)/2 for x, y in zip(a, b))
+                    split.extend([(kind, label, (a, midpoint, c)),
+                                  (kind, label, (midpoint, b, c))])
+                panels = split
+            _write_panels(os.path.join(directory, name + ".txt"), name, panels)
+        er = permittivity_text(permittivity)
+        path = os.path.join(directory, "coated_spheres.lst")
+        # The coat center is on the inner ('-') side of the interface. The outer
+        # conductor has vacuum on both sides, including its capacitance to infinity.
+        _write_list(path, ["C inner.txt %s 0 0 0" % er,
+                           "D coat.txt 1.0 %s 0 0 0 %s -" % (er, _fmt(offset)),
+                           "C outer.txt 1.0 0 0 0"])
+        return path
+
+    # Integrate E = Q/(4*pi*eps*r*r) through the two annuli in series. The outer
+    # sphere adds 4*pi*eps0*R to C22; inner excitation has no field outside it.
+    coupling = FOUR_PI_EPS0 / ((1.0 / inner_radius - 1.0 / coat_radius) / permittivity
+                              + 1.0 / coat_radius - 1.0 / outer_radius)
+    analytic = {(1, 1): coupling, (1, 2): -coupling, (2, 1): -coupling,
+                (2, 2): coupling + FOUR_PI_EPS0 * outer_radius}
+    if any(offset):
+        # Reciprocity and shielding still hold, but the spherical series-capacitor
+        # formula requires concentric interfaces.
+        analytic = {}
+    return Geometry(write, 2, analytic, [])
+
+
 def write_three_cubes_single_file(directory):
     """The three cubes in one input file, the cube as an internal 'File' section."""
     path = os.path.join(directory, "three_cubes_single_file.lst")
@@ -339,6 +391,13 @@ COATED_COAX_C = 2.0 * math.pi * EPS0 / (math.log(COAX_COAT_RADIUS / RADIUS) / CO
 
 
 GEOMETRIES = {
+    "coated_spheres_flux": coated_spheres_geometry(10.0, depth=2),
+    "coated_spheres_flux_lossy": coated_spheres_geometry(10.0-2.0j, depth=2),
+    "coated_spheres_flux_high_contrast": coated_spheres_geometry(100.0, depth=2),
+    "coated_spheres_flux_fine": coated_spheres_geometry(10.0, depth=3),
+    "coated_spheres_flux_offset": coated_spheres_geometry(100.0, depth=2,
+                                                          offset=(0.4, -0.2, 0.15)),
+    "coated_spheres_flux_thin": coated_spheres_geometry(100.0, coat_radius=1.125, depth=2),
     "cube": Geometry(write_cube, 1, {(1, 1): CUBE_FACTOR * FOUR_PI_EPS0 * SIDE}, []),
     "three_cubes": Geometry(write_three_cubes, 3, {}, [((1, 2), (1, 3)), ((2, 2), (3, 3))]),
     "two_cubes": Geometry(write_two_cubes, 1, {}, []),

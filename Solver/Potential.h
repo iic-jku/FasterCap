@@ -102,6 +102,7 @@ public:
 				  C3DVector_float vertexes2[3], int rule, bool divideByArea = true);
 	double MutualHalfNumerical(CAutoPanel panel1,
 				  CAutoPanel panel2, int rule, bool divideByArea = true);
+	// Exact target field integral, numerical source integral; h is unused for compatibility.
 	double MutualDHalfNumerical(C3DVector_float vertexes1[3],
 				  C3DVector_float vertexes2[3],C3DVector normal, double h, int rule, bool divideByArea = true);
 	double MutualDHalfNumerical(CAutoPanel panel1,
