@@ -6444,16 +6444,50 @@ int CAutoRefine::BuildSuperHierarchy()
 }
 
 
+// Partition the active pointer range and build both child boxes. A geometric
+// split can be empty when centroids coincide or the midpoint rounds to an end.
+// Splitting the original order in half then guarantees progress in either dimension.
+template<class Element>
+static unsigned long PartitionHierarchy(Element **elements, Element **scratch,
+                                         unsigned long first, unsigned long count,
+                                         C3DBBox *bbox, C3DBBox &leftBox, C3DBBox &rightBox)
+{
+	const unsigned long end = first + count;
+	const unsigned char coordinate = bbox->MaxSide();
+	const double middle = (bbox->max_point[coordinate] + bbox->min_point[coordinate]) / 2.0;
+	unsigned long split = first, right = end;
+	for(unsigned long i=first; i<end; i++) {
+		if(elements[i]->GetCentroid()[coordinate] <= middle) {
+			scratch[split++] = elements[i];
+		}
+		else {
+			scratch[--right] = elements[i];
+		}
+	}
+	if(split == first || split == end) {
+		split = first + count / 2;
+		for(unsigned long i=first; i<end; i++) {
+			scratch[i] = elements[i];
+		}
+	}
+	for(unsigned long i=first; i<end; i++) {
+		elements[i] = scratch[i];
+		if(i < split) {
+			leftBox += elements[i]->GetCentroid();
+		}
+		else {
+			rightBox += elements[i]->GetCentroid();
+		}
+	}
+	return split;
+}
+
 CAutoPanel *CAutoRefine::RecurBuild3DSuperHier(unsigned long firstPanel, unsigned long panelNum, C3DBBox *bbox)
 {
-	unsigned long i, low_i, hi_i;
-	unsigned char maxcoord;
-	double midPlane;
+	unsigned long low_i;
 	C3DBBox lBbox, rBbox;
 	CAutoPanel *leftSubPanel, *rightSubPanel, *currPanel;
 
-	// could assert if there are multiple panels with the same centroid
-	// TBC warning: should issue an error message to the user
 	ASSERT(panelNum >= 1);
 
 	m_iLevel++;
@@ -6464,37 +6498,8 @@ CAutoPanel *CAutoRefine::RecurBuild3DSuperHier(unsigned long firstPanel, unsigne
 	}
 	else {
 
-		// find division coordinate
-		maxcoord = bbox->MaxSide();
-		midPlane = (bbox->max_point[maxcoord] + bbox->min_point[maxcoord]) / 2.0;
-
-		// divide panels in two groups according to their position relative to 'midPlane'
-		for(i=firstPanel, low_i=firstPanel, hi_i = firstPanel+panelNum-1; i<firstPanel+panelNum; i++) {
-
-			if(m_pPanelArray1[i]->GetCentroid()[maxcoord] <= midPlane) {
-				m_pPanelArray2[low_i] = m_pPanelArray1[i];
-				low_i++;
-			}
-			else {
-				m_pPanelArray2[hi_i] = m_pPanelArray1[i];
-				hi_i--;
-			}
-		}
-
-		// compute bboxes for left and right groups
-		// and copy sorted pointers back to the original array
-		for(i=firstPanel; i<low_i; i++) {
-			// copy data
-			m_pPanelArray1[i] = m_pPanelArray2[i];
-			// compute bbox
-			lBbox += m_pPanelArray1[i]->GetCentroid();
-		}
-		for(i=low_i; i<firstPanel+panelNum; i++) {
-			// copy data
-			m_pPanelArray1[i] = m_pPanelArray2[i];
-			// compute bbox
-			rBbox += m_pPanelArray1[i]->GetCentroid();
-		}
+		low_i = PartitionHierarchy(m_pPanelArray1, m_pPanelArray2,
+		                           firstPanel, panelNum, bbox, lBbox, rBbox);
 
 		// recursively build left and right subtrees
 		leftSubPanel = RecurBuild3DSuperHier(firstPanel, low_i - firstPanel, &lBbox);
@@ -6530,14 +6535,10 @@ CAutoPanel *CAutoRefine::RecurBuild3DSuperHier(unsigned long firstPanel, unsigne
 
 CAutoSegment *CAutoRefine::RecurBuild2DSuperHier(unsigned long firstPanel, unsigned long panelNum, C3DBBox *bbox)
 {
-	unsigned long i, low_i, hi_i;
-	unsigned char maxcoord;
-	double midPlane;
+	unsigned long low_i;
 	C3DBBox lBbox, rBbox;
 	CAutoSegment *leftSubPanel, *rightSubPanel, *currPanel;
 
-	// could assert if there are multiple panels with the same centroid
-	// TBC warning: should issue an error message to the user
 	ASSERT(panelNum >= 1);
 
 	m_iLevel++;
@@ -6548,38 +6549,8 @@ CAutoSegment *CAutoRefine::RecurBuild2DSuperHier(unsigned long firstPanel, unsig
 	}
 	else {
 
-		// find division coordinate
-		maxcoord = bbox->MaxSide();
-		ASSERT(maxcoord != 2);
-		midPlane = (bbox->max_point[maxcoord] + bbox->min_point[maxcoord]) / 2.0;
-
-		// divide panels in two groups according to their position relative to 'midPlane'
-		for(i=firstPanel, low_i=firstPanel, hi_i = firstPanel+panelNum-1; i<firstPanel+panelNum; i++) {
-
-			if(m_pSegmentArray1[i]->GetCentroid()[maxcoord] <= midPlane) {
-				m_pSegmentArray2[low_i] = m_pSegmentArray1[i];
-				low_i++;
-			}
-			else {
-				m_pSegmentArray2[hi_i] = m_pSegmentArray1[i];
-				hi_i--;
-			}
-		}
-
-		// compute bboxes for left and right groups
-		// and copy sorted pointers back to the original array
-		for(i=firstPanel; i<low_i; i++) {
-			// copy data
-			m_pSegmentArray1[i] = m_pSegmentArray2[i];
-			// compute bbox
-			lBbox += m_pSegmentArray1[i]->GetCentroid();
-		}
-		for(i=low_i; i<firstPanel+panelNum; i++) {
-			// copy data
-			m_pSegmentArray1[i] = m_pSegmentArray2[i];
-			// compute bbox
-			rBbox += m_pSegmentArray1[i]->GetCentroid();
-		}
+		low_i = PartitionHierarchy(m_pSegmentArray1, m_pSegmentArray2,
+		                           firstPanel, panelNum, bbox, lBbox, rBbox);
 
 		// recursively build left and right subtrees
 		leftSubPanel = RecurBuild2DSuperHier(firstPanel, low_i - firstPanel, &lBbox);
