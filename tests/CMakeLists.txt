@@ -36,6 +36,12 @@ if(NOT Python3_Interpreter_FOUND)
     return()
 endif()
 
+# #46: small nested inputs must reject oversized decorated names before copying.
+add_test(NAME nested_conductor_names
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_nested_names.py
+        $<TARGET_FILE:FasterCap>)
+set_tests_properties(nested_conductor_names PROPERTIES TIMEOUT 60)
+
 if(UNIX)
     add_test(NAME resource_guard
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_resource_guard.py)
