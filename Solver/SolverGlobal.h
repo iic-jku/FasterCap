@@ -51,7 +51,7 @@
 // the result is the last one computed, not a converged one: GMRES did not reach its
 // tolerance (-t), or auto-refinement (-a) exhausted SOLVE_MAX_AUTO_ITERATIONS
 #define FC_CONVERGENCE_FAILED	75
-// the capacitance matrix has NaN or infinite entries, e.g. from a degenerate input panel
+// the solve or capacitance matrix has NaN or infinite values, e.g. from a degenerate panel
 #define FC_INVALID_RESULT		65
 
 #define G_KILOBYTE	1024

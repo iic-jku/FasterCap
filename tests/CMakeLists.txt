@@ -18,6 +18,12 @@ if(FASTFIELDSOLVERS_HEADLESS)
     add_executable(test_triangulate test_triangulate.cpp)
     target_link_libraries(test_triangulate FasterCapSolver)
     add_test(NAME triangulate COMMAND test_triangulate)
+    # Known linear systems and independent residuals: tolerance 1e-12 leaves room for
+    # roundoff in these small well-conditioned systems, including flexible preconditioning.
+    add_executable(test_gmres test_gmres.cpp)
+    target_link_libraries(test_gmres FasterCapSolver)
+    add_test(NAME gmres COMMAND test_gmres)
+    set_tests_properties(gmres PROPERTIES TIMEOUT 10)
 endif()
 
 # -bv prints only the version; headless builds started a run without input file instead

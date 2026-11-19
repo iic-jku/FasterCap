@@ -34,6 +34,7 @@
 #include "omp.h"
 // for _isnan() and _finite()
 #include <float.h>
+#include <cmath>
 
 #include "SolveCapacitance.h"
 
@@ -940,7 +941,7 @@ void CSolveCap::PrintRetError(int retErr)
 		ErrMsg("\n\nWarning: Not converged (see above), the result is the last computed one!\n");
 	}
 	else if(retErr == FC_INVALID_RESULT) {
-		ErrMsg("\n\nError: Capacitance matrix with NaN or infinite entries, program execution stopped!\n");
+		ErrMsg("\n\nError: NaN or infinite value during capacitance calculation, program execution stopped!\n");
 	}
 	else if(retErr != FC_NORMAL_END) {
 		ErrMsg("\n\nError: Unknown error code, program execution stopped!\n");
@@ -1366,7 +1367,6 @@ int CSolveCap::Solve(CLin_Matrix *cRe, CLin_Matrix *cIm)
 int CSolveCap::AllocateMemory()
 {
 	unsigned long numElems_0, numPanels_0;
-	bool ret;
 
 	//
 	// declare large arrays / matrices on the heap, not on the stack (otherwise will run out of stack
@@ -1384,6 +1384,96 @@ int CSolveCap::AllocateMemory()
 	// array of vectors to store charges, in case charge densities dump is required
 	// SAFENEW_ARRAY_NOMEM_RET(TYPE, VAR, LEN)
 	SAFENEW_ARRAY_NOMEM_RET(CLin_Vector, m_pCondCharges, m_clsMulthier.m_lCondNum)
+
+	int gmresRet = AllocateGmresMemory(numElems_0);
+	if(gmresRet != FC_NORMAL_END) {
+		return gmresRet;
+	}
+
+	if( (m_clsGlobalVars.m_ucPrecondType & AUTOREFINE_PRECOND_SUPER) != 0) {
+
+		// super preconditioner
+		//
+		// allocate only if not already allocated (in previous call)
+		if(m_pclsSupPrecondMtx == NULL) {
+			// SAFENEW_MATRIX_RET(TYPE, VAR, LEN, MEM)
+			SAFENEW_MATRIX_RET(double, m_pclsSupPrecondMtx, SOLVE_MAX_SUPER_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
+		}
+		if(m_pclsSupPotMtx == NULL) {
+			// SAFENEW_MATRIX_RET(TYPE, VAR, LEN, MEM)
+			SAFENEW_MATRIX_RET(double, m_pclsSupPotMtx, SOLVE_MAX_SUPER_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
+		}
+
+		// allocate arrays for super preconditioner
+		//
+		// super preconditioner elements
+		if(m_clsSupPrecondElements == NULL) {
+			// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
+			SAFENEW_ARRAY_RET(CSuperPrecondElement, m_clsSupPrecondElements, SOLVE_MAX_SUPER_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
+		}
+
+		// leaf pointers to super preconditioner high level leaves;
+		// in case it was already declared, destroy and re-declare (can change length)
+		if(m_puiSupPrecondIndex != NULL) {
+			delete m_puiSupPrecondIndex;
+		}
+		// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
+		SAFENEW_ARRAY_RET(unsigned int, m_puiSupPrecondIndex, numPanels_0, g_clsMemUsage.m_ulPrecondMem)
+
+		// array of leaf panel areae, accessible via index, to correctly extend / reduce
+		// the results of the super precond multiplication to the leaves (correct weighting,
+		// in case of non-uniform panel discretizations)
+		if(m_pfSupPrecondAreae != NULL) {
+			delete m_pfSupPrecondAreae;
+		}
+		// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
+		SAFENEW_ARRAY_RET(float, m_pfSupPrecondAreae, numPanels_0, g_clsMemUsage.m_ulPrecondMem)
+	}
+
+	// if block preconditioner
+	if( (m_clsGlobalVars.m_ucPrecondType & AUTOREFINE_PRECOND_BLOCK) != 0) {
+
+		// allocate arrays for block preconditioner
+		//
+
+		// block preconditioner elements
+		if(m_clsBlockPrecondElements == NULL) {
+			// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
+			SAFENEW_ARRAY_RET(CAutoPanel*, m_clsBlockPrecondElements, SOLVE_MAX_BLOCK_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
+		}
+		// block preconditioner
+		if(m_pdBlockPrecond != NULL) {
+			delete []m_pdBlockPrecond;
+		}
+		// SAFENEW_MATRIXNM_RET(TYPE, VAR, LEN, MEM)
+		SAFENEW_MATRIXNM_RET(double, m_pdBlockPrecond, numElems_0, SOLVE_MAX_BLOCK_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
+
+		// number of elements in each block (in case there are less than 'm_clsGlobalVars.m_uiBlockPreSize')
+		if(m_pucBlockPrecondDim != NULL) {
+			delete m_pucBlockPrecondDim;
+		}
+		// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
+		SAFENEW_ARRAY_RET(unsigned char, m_pucBlockPrecondDim, numElems_0, g_clsMemUsage.m_ulPrecondMem);
+
+		// borrow also the super potential matrix
+		if(m_pclsSupPotMtx == NULL) {
+			// SAFENEW_MATRIX_RET(TYPE, VAR, LEN, MEM)
+			SAFENEW_MATRIX_RET(double, m_pclsSupPotMtx, SOLVE_MAX_SUPER_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
+		}
+		// and allocate temporary block to store the inverted 'm_pclsSupPotMtx' when calculating the precond
+		if(m_pclsTmpCapMtx == NULL) {
+			// SAFENEW_MATRIX_RET(TYPE, VAR, LEN, MEM)
+			SAFENEW_MATRIX_RET(double, m_pclsTmpCapMtx, SOLVE_MAX_SUPER_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
+		}
+	}
+
+	return FC_NORMAL_END;
+}
+
+// Shared by capacitance extraction and direct linear-system tests.
+int CSolveCap::AllocateGmresMemory(unsigned long numElems_0)
+{
+	bool ret;
 
 	// preallocate vectors and matrices for gmres on bottom level
 
@@ -1507,85 +1597,6 @@ int CSolveCap::AllocateMemory()
 
 	// record up to which iteration the arrays have been pre-allocated
 	m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_0_LEVEL] = 0;
-
-
-
-	if( (m_clsGlobalVars.m_ucPrecondType & AUTOREFINE_PRECOND_SUPER) != 0) {
-
-		// super preconditioner
-		//
-		// allocate only if not already allocated (in previous call)
-		if(m_pclsSupPrecondMtx == NULL) {
-			// SAFENEW_MATRIX_RET(TYPE, VAR, LEN, MEM)
-			SAFENEW_MATRIX_RET(double, m_pclsSupPrecondMtx, SOLVE_MAX_SUPER_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
-		}
-		if(m_pclsSupPotMtx == NULL) {
-			// SAFENEW_MATRIX_RET(TYPE, VAR, LEN, MEM)
-			SAFENEW_MATRIX_RET(double, m_pclsSupPotMtx, SOLVE_MAX_SUPER_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
-		}
-
-		// allocate arrays for super preconditioner
-		//
-		// super preconditioner elements
-		if(m_clsSupPrecondElements == NULL) {
-			// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
-			SAFENEW_ARRAY_RET(CSuperPrecondElement, m_clsSupPrecondElements, SOLVE_MAX_SUPER_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
-		}
-
-		// leaf pointers to super preconditioner high level leaves;
-		// in case it was already declared, destroy and re-declare (can change length)
-		if(m_puiSupPrecondIndex != NULL) {
-			delete m_puiSupPrecondIndex;
-		}
-		// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
-		SAFENEW_ARRAY_RET(unsigned int, m_puiSupPrecondIndex, numPanels_0, g_clsMemUsage.m_ulPrecondMem)
-
-		// array of leaf panel areae, accessible via index, to correctly extend / reduce
-		// the results of the super precond multiplication to the leaves (correct weighting,
-		// in case of non-uniform panel discretizations)
-		if(m_pfSupPrecondAreae != NULL) {
-			delete m_pfSupPrecondAreae;
-		}
-		// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
-		SAFENEW_ARRAY_RET(float, m_pfSupPrecondAreae, numPanels_0, g_clsMemUsage.m_ulPrecondMem)
-	}
-
-	// if block preconditioner
-	if( (m_clsGlobalVars.m_ucPrecondType & AUTOREFINE_PRECOND_BLOCK) != 0) {
-
-		// allocate arrays for block preconditioner
-		//
-
-		// block preconditioner elements
-		if(m_clsBlockPrecondElements == NULL) {
-			// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
-			SAFENEW_ARRAY_RET(CAutoPanel*, m_clsBlockPrecondElements, SOLVE_MAX_BLOCK_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
-		}
-		// block preconditioner
-		if(m_pdBlockPrecond != NULL) {
-			delete []m_pdBlockPrecond;
-		}
-		// SAFENEW_MATRIXNM_RET(TYPE, VAR, LEN, MEM)
-		SAFENEW_MATRIXNM_RET(double, m_pdBlockPrecond, numElems_0, SOLVE_MAX_BLOCK_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
-
-		// number of elements in each block (in case there are less than 'm_clsGlobalVars.m_uiBlockPreSize')
-		if(m_pucBlockPrecondDim != NULL) {
-			delete m_pucBlockPrecondDim;
-		}
-		// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
-		SAFENEW_ARRAY_RET(unsigned char, m_pucBlockPrecondDim, numElems_0, g_clsMemUsage.m_ulPrecondMem);
-
-		// borrow also the super potential matrix
-		if(m_pclsSupPotMtx == NULL) {
-			// SAFENEW_MATRIX_RET(TYPE, VAR, LEN, MEM)
-			SAFENEW_MATRIX_RET(double, m_pclsSupPotMtx, SOLVE_MAX_SUPER_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
-		}
-		// and allocate temporary block to store the inverted 'm_pclsSupPotMtx' when calculating the precond
-		if(m_pclsTmpCapMtx == NULL) {
-			// SAFENEW_MATRIX_RET(TYPE, VAR, LEN, MEM)
-			SAFENEW_MATRIX_RET(double, m_pclsTmpCapMtx, SOLVE_MAX_SUPER_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
-		}
-	}
 
 	return FC_NORMAL_END;
 }
@@ -2082,898 +2093,295 @@ void CSolveCap::InvertMatrix(double (*matrix)[SOLVE_MAX_SUPER_PRECOND_NUM], doub
 	delete [] b;
 }
 
-//   Generalized Minimum Residual Method with preconditioner
-//
-//   x = gmresPrecond(A,b,P) attempt to solve the preconditioned
-//   system A*P*y = b & x = P*y
-//
-//   Enrico Di Lorenzo, 2004/07/06
-//
-//   'fast' refers to the direct vector multiplication loops used
-//   instead of CLin_Vector class operator*, which requires
-//   the creation of a temp object for every assignment operation
-//
-//   the 's' on the other hand refers to the scilab gmres correction,
-//   to make convergence faster, that basically uses as residual
-//   a weighted residual: normr = || b - Ax || / || b ||, that is
-//   normr = fabs(g[i+1]) / normb;
-//   and not
-//   normr = fabs(g[i+1]);
-//   see also the notes inline about this choice
-//
-//   the 'all' refers to the increase of speed not allocating memory
-//   locally every time
-//
-//   This version has been modified to work with a complex potential matrix;
-//   this is not a general-purpose gmres dealing with complex values, but an optimized
-//   version that considers that the only imaginary parts are on the diagonal, and only
-//   for the rows corresponding to the dielectric panels. In this case, b and x have
-//   a length 2x the number of panels n, where the first n elements are the real parts,
-//   while the remaining n elements are the imaginary parts
+// A scaled norm keeps tiny right-hand sides and large intermediate vectors from
+// underflowing or overflowing when their components are squared.
+static double GmresNorm(const CLin_Vector &vector)
+{
+	double scale = 0.0, sum = 1.0;
+	for(unsigned long i=0; i<vector.size(); i++) {
+		double value = fabs(vector[i]);
+		if(!isfinite(value)) {
+			return value;
+		}
+		if(value != 0.0) {
+			if(scale < value) {
+				double ratio = scale / value;
+				sum = 1.0 + sum * ratio * ratio;
+				scale = value;
+			}
+			else {
+				double ratio = value / scale;
+				sum += ratio * ratio;
+			}
+		}
+	}
+	return scale * sqrt(sum);
+}
+
+int CSolveCap::MultiplyGmresMatrix(CLin_Vector *result, CLin_Vector *x)
+{
+	return m_clsMulthier.MultiplyMatByVec_fast(result, x);
+}
+
+void CSolveCap::PreconditionGmresVector(CLin_Vector *result, CLin_Vector *x)
+{
+	ComputePrecondVectFast(result, x, m_clsGlobalVars.m_ucPrecondType);
+}
+
+int CSolveCap::GmresResidual(CLin_Vector *b, CLin_Vector *x, double &normr)
+{
+	if(!isfinite(GmresNorm(*x))) {
+		return FC_INVALID_RESULT;
+	}
+	int ret = MultiplyGmresMatrix(&m_clsGmres_v, x);
+	if(ret != FC_NORMAL_END) {
+		return ret;
+	}
+	for(unsigned long k=0; k<b->size(); k++) {
+		m_clsGmres_r[k] = (*b)[k] - m_clsGmres_v[k];
+	}
+	normr = GmresNorm(m_clsGmres_r);
+	return isfinite(normr) ? FC_NORMAL_END : FC_INVALID_RESULT;
+}
+
+// Form the current solution without modifying the Arnoldi basis or QR factors:
+// if its true residual is too large, iteration can continue with the same basis.
+int CSolveCap::GmresSolution(CLin_Vector *x, long iterations, bool flexible)
+{
+	for(long i=0; i<iterations; i++) {
+		m_clsGmres_z[i] = m_clsGmres_g[i];
+	}
+	for(long i=iterations-1; i>=0; i--) {
+		m_clsGmres_z[i] /= m_pclsGmres_h[i][i];
+		if(!isfinite(m_clsGmres_z[i])) {
+			return FC_INVALID_RESULT;
+		}
+		for(long j=0; j<i; j++) {
+			m_clsGmres_z[j] -= m_pclsGmres_h[i][j] * m_clsGmres_z[i];
+		}
+	}
+
+	bool preconditioned = m_clsGlobalVars.m_ucPrecondType != AUTOREFINE_PRECOND_NONE;
+	for(unsigned long k=0; k<x->size(); k++) {
+		double value = 0.0;
+		for(long j=0; j<iterations; j++) {
+			const CLin_Vector &basis = flexible && preconditioned ? m_pclsGmres_zf[j] : m_pclsGmres_q[j];
+			value += basis[k] * m_clsGmres_z[j];
+		}
+		m_clsGmres_y[k] = value;
+	}
+	if(preconditioned && !flexible && iterations != 0) {
+		PreconditionGmresVector(x, &m_clsGmres_y);
+	}
+	else {
+		*x = m_clsGmres_y;
+	}
+	for(unsigned long k=0; k<x->size(); k++) {
+		(*x)[k] += m_clsGmres_x0[k];
+	}
+	return isfinite(GmresNorm(*x)) ? FC_NORMAL_END : FC_INVALID_RESULT;
+}
+
 int CSolveCap::gmresPrecondSFastAll(CLin_Vector *b, CLin_Vector *x, double gmresTol)
 {
-	double normr, normb, tmp1, tmp2, length;
-	long i, j, iteration, size, k, ii;
-	bool ret;
-	int retInt;
-	CLin_Range bre, xre;
-
-	// get system size
-	size = b->size();
-	// check consistency of size
-	ASSERT(size == (long)(*x).size());
-
-	// if there is a preconditioner
-	if(m_clsGlobalVars.m_ucPrecondType != AUTOREFINE_PRECOND_NONE) {
-
-		// initial vector: having the approx inverted matrix, it is cheap to calculate the initial vector.
-		//  Simply put, to solve the preconditioned system
-		//  A * P * y = b and x = P * y, the best choice for y0 initial vector is b,
-		//  since a good P should be as similar as possible to inv(A), so A * P ~= I
-		//  So x0 = P * y0 = P * b
-		ComputePrecondVectFast(&m_clsGmres_x0, b, m_clsGlobalVars.m_ucPrecondType);
-
-		// r = b - A * x0;
-		// matrix - vector multiplication
-		retInt = m_clsMulthier.MultiplyMatByVec_fast(&m_clsGmres_v, &m_clsGmres_x0);
-		if(retInt != FC_NORMAL_END) {
-			return retInt;
-		}
-		// and get r
-		//m_clsGmres_r = *b - m_clsGmres_v;
-		for(k=0; k<size; k++) {
-			m_clsGmres_r[k] = (*b)[k] - m_clsGmres_v[k];
-		}
-		normr = mod(m_clsGmres_r);
-		normb = mod(*b);
-	}
-	else {
-		// no preconditioner; assumes that initial vector x0 is an all zeros vector
-		//
-		m_clsGmres_r = *b;
-		normr = mod(m_clsGmres_r);
-		normb = normr;
-	}
-
-	// allocate and init first column of Q matrix
-	//m_pclsGmres_q[0] = m_clsGmres_r / normr;
-	for(k=0; k<size; k++) {
-		m_pclsGmres_q[0][k] = m_clsGmres_r[k] / normr;
-	}
-
-	// init first element of first row of the
-	// Q matrix of the QR factors of H; this should be 1,
-	// using normr will produce the first row
-	// multiplied by normr, which is used to compute the solution
-	// Remark: this is not the Q matrix whose columns are q(i,j)
-	m_clsGmres_g[0] = normr;
-
-	//
-	// if the norm of the residual is small enough,
-	// initial vector is a good enough solution
-	//
-	if(normr / normb < gmresTol) {
-		if(m_clsGlobalVars.m_ucPrecondType == AUTOREFINE_PRECOND_NONE) {
-			*x = CLin_Vector(size, 0.0);
-		}
-		else {
-			*x = m_clsGmres_x0;
-		}
-		return FC_NORMAL_END;
-	}
-
-	LogMsg("GMRES Iteration: ");
-
-	// start iteration
-	for(i = 0; i < SOLVE_GMRES_ITER_MAX && i < (long)size; i++) {
-
-		if(g_bFCContinue == false) {
-			return FC_USER_BREAK;
-		}
-
-		//
-		// execute the i-th Arnoldi step, thus computing
-		// the i-th column of the H (upper Hessemberg) matrix
-		//
-
-		if(m_clsGlobalVars.m_bDumpResidual == true) {
-			LogMsg("%.3g ", normr);
-		}
-		LogMsg("%d ", i);
-
-		// allocate only if not already pre-allocated
-		if((long)m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_0_LEVEL] < i) {
-
-			ASSERT((long)m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_0_LEVEL] == i-1);
-
-			// allocate new column of h
-			// (remark: since vectors are 0-based, must
-			// allocate i+2 entries and not only i+1;
-			// i.e. variable 'i' starts at 0!)
-			ret = m_pclsGmres_h[i].newsize(i+2);
-			if(ret == false) {
-				return FC_OUT_OF_MEMORY;
-			}
-			g_clsMemUsage.m_ulGmresMem += (i+2) * sizeof(double);
-			// allocate new column of q
-			ret = m_pclsGmres_q[i+1].newsize(size);
-			if(ret == false) {
-				return FC_OUT_OF_MEMORY;
-			}
-			g_clsMemUsage.m_ulGmresMem += size * sizeof(double);
-
-			m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_0_LEVEL]++;
-		}
-
-		// compute new vector
-		//
-		if(m_clsGlobalVars.m_ucPrecondType == AUTOREFINE_PRECOND_NONE) {
-			retInt = m_clsMulthier.MultiplyMatByVec_fast(&m_clsGmres_v, &m_pclsGmres_q[i]);
-			if(retInt != FC_NORMAL_END) {
-				return retInt;
-			}
-		}
-		else {
-			// compute preconditioned vector
-			ComputePrecondVectFast(&m_clsGmres_Pq, &m_pclsGmres_q[i], m_clsGlobalVars.m_ucPrecondType);
-			// and use it in matrix - vector multiplication
-			retInt = m_clsMulthier.MultiplyMatByVec_fast(&m_clsGmres_v, &m_clsGmres_Pq);
-			if(retInt != FC_NORMAL_END) {
-				return retInt;
-			}
-		}
-
-		//m_clsGmres_w = m_clsGmres_v;
-		for(k=0; k<size; k++) {
-			m_clsGmres_w[k] = m_clsGmres_v[k];
-		}
-
-		// orthogonalize it
-		for(j=0; j<=i; j++) {
-			m_pclsGmres_h[i][j] = dot_prod(m_pclsGmres_q[j], m_clsGmres_w);
-			for(ii=0; ii<size; ii++) {
-				m_clsGmres_v[ii] = m_clsGmres_v[ii] - m_pclsGmres_h[i][j] * m_pclsGmres_q[j][ii];
-			}
-		}
-
-		m_pclsGmres_h[i][i+1] = mod(m_clsGmres_v);
-
-		for(ii=0; ii<size; ii++) {
-			m_pclsGmres_q[i+1][ii] = m_clsGmres_v[ii] / (m_pclsGmres_h[i][i+1]);
-		}
-
-		//
-		// rotate new vector (Givens rotations) to compute
-		// the (R;0) matrix of the QR factors of H(j+1);
-		// this is done updating (Q';tmp')*H(j) = (R(j);0)
-		// to produce (Q';tmp')*H(j+1)=(R(j+1);0)
-		// Remark: the first time the loop is executed,
-		// this rotation does not happen
-		//
-
-		// apply all old rotations to new i-th column
-		// of the H matrix to get Q*H from H, but for the
-		// last two elements
-		for(j=0; j<i; j++) {
-			tmp1 = m_pclsGmres_h[i][j];
-			tmp2 = m_pclsGmres_h[i][j+1];
-			m_pclsGmres_h[i][j] = m_clsGmres_c[j] * tmp1 - m_clsGmres_s[j]* tmp2;
-			m_pclsGmres_h[i][j+1] = m_clsGmres_c[j] * tmp2 + m_clsGmres_s[j] * tmp1;
-		}
-
-		// compute the new Givens rotation to annihilate h[i][i+1]
-		tmp1 = m_pclsGmres_h[i][i];
-		tmp2 = m_pclsGmres_h[i][i+1];
-		length = sqrt(tmp1 * tmp1 + tmp2 * tmp2);
-		m_clsGmres_c[i] = tmp1/length;
-		m_clsGmres_s[i] = -tmp2/length;
-
-		// apply new Givens rotation to incomplete
-		// (Q';tmp')*H(j+1) matrix i-th column
-		// to get the complete (R(j+1);0)
-		m_pclsGmres_h[i][i] = m_clsGmres_c[i] * tmp1 - m_clsGmres_s[i] * tmp2;
-		// this should be zero anyway
-		//h(i+1,i) = c(i) * tmp2 + s(i) * tmp1;
-		m_pclsGmres_h[i][i+1] = 0;
-
-		//
-		// Compute recursively the first column of the (Q';tmp')
-		// matrix of the QR factors of H(j+1); this is used to
-		// get implicitly the norm of the residual and to compute
-		// the solution once the norm is small enough
-		//
-
-		tmp1 = m_clsGmres_g[i];
-		m_clsGmres_g[i] = m_clsGmres_c[i] * tmp1;
-		m_clsGmres_g[i+1] = m_clsGmres_s[i] * tmp1;
-
-		// this is the norm of the residual
-		// remark: || b - A*Qj*z || = normb * fabs(g[i+1])
-		// (see "Matrix analysis and applied linear algebra", Meyers)
-		// so fabs(g[i+1]) is already the norm of the residual
-		// weighted by the norm of b (i.e the % difference)
-		// However this is not true here, also verified
-		// explicitly calculating the residual norm, once the solution
-		// is found (see below), so the weighted formula is correct
-		normr = fabs(m_clsGmres_g[i+1]) / normb;
-
-		//
-		// if the norm of the residual is small enough,
-		// exit loop (and return solution)
-		//
-		if(normr < gmresTol) {
-			break;
-		}
-	}
-
-	if(i >= SOLVE_GMRES_ITER_MAX || i >= size) {
-		ErrMsg("\nError: not converging after %d iterations, norm of the residual is %.3f, while targeting %.3f\n", i, normr, gmresTol);
-		m_bGmresConverged = false;
-		// either case, since we ended the 'for' loop, 'i' has been incremented of one more;
-		// to avoid breaking the end of the arrays here below, we must decrease 'i'
-		i--;
-	}
-
-	if(m_clsGlobalVars.m_bDumpResidual == true) {
-		LogMsg("%.3f ", normr);
-	}
-	LogMsg("\n");
-
-	//
-	// compute the solution, solving H(i)*z = normr * e1 for z using
-	// the first row of the Q matrix and the R matrix of the QR
-	// factorization of H; then the solution is x = Q(i)*z
-	//
-
-	iteration = i;
-
-	// H(i)*z = normb*e1 gives Q*R*z = normb*e1 -> R*z = Q'*normb*e1
-	// Since g(i) is already the first column of Q' multiplied by normb,
-	// it is the term Q'*normb*e1, so init the solution
-	//m_clsGmres_z = m_clsGmres_g;
-	for(k=0; k<size; k++) {
-		m_clsGmres_z[k] = m_clsGmres_g[k];
-	}
-
-	// then solve R*z = Q'*normr*e1 by back substitution,
-	// knowing that R is upper triangular
-	for(i = iteration; i>=0; i--) {
-		m_clsGmres_z[i]= m_clsGmres_z[i] / m_pclsGmres_h[i][i];
-		for(j = i-1; j>=0; j--) {
-			m_clsGmres_z[j] = m_clsGmres_z[j] - m_pclsGmres_h[i][j] * m_clsGmres_z[i];
-		}
-	}
-
-
-	// multiply z by Q(i) to get y, the solution
-	// of the (possibly preconditioned) system
-	for(i=0; i<size; i++) {
-		for(j=0, tmp1 = 0; j<=iteration; j++) {
-			tmp1 += m_pclsGmres_q[j][i] * m_clsGmres_z[j];
-		}
-		m_clsGmres_y[i] = tmp1;
-	}
-
-	if(m_clsGlobalVars.m_ucPrecondType == AUTOREFINE_PRECOND_NONE) {
-		*x = m_clsGmres_y;
-	}
-	else {
-		// undo the preconditioner to get x, the final solution,
-		// also considering initial vector in the solution
-		//x = x0 + P * y;
-		ComputePrecondVectFast(x, &m_clsGmres_y, m_clsGlobalVars.m_ucPrecondType);
-		//*x = m_clsGmres_x0 + *x;
-		for(k=0; k<size; k++) {
-			(*x)[k] = m_clsGmres_x0[k] + (*x)[k];
-		}
-	}
-
-	// debug : explicit calculation of residual vector
-	// (is equal to normr*normb in this routine; this proves
-	// that normr here is weighted on normb)
-	//double residual2;
-	//CLin_Vector b_approx(size);
-	//m_clsMulthier.MultiplyMatByVec_fast(x, &b_approx);
-	//residual2 = mod(*b - b_approx);
-
-	return FC_NORMAL_END;
+	return GmresSolve(b, x, gmresTol, false);
 }
 
-//   Flexible Generalized Minimum Residual Method with preconditioner
-//
-//   x = gmresPrecond(A,b,P) attempt to solve the preconditioned
-//   system A*P*y = b & x = P*y
-//   Flexible means that the preconditioner can change at every iteration
-//   (see "Iterative methods for sparse linear systems", Yousef Saad)
-//
-//   Enrico Di Lorenzo, 2004/07/06
-//
-//   'fast' refers to the direct vector multiplication loops used
-//   instead of CLin_Vector class operator*, which requires
-//   the creation of a temp object for every assignment operation
-//
-//   the 's' on the other hand refers to the scilab gmres correction,
-//   to make convergence faster, that basically uses as residual
-//   a weighted residual: normr = || b - Ax || / || b ||, that is
-//   normr = fabs(g[i+1]) / normb;
-//   and not
-//   normr = fabs(g[i+1]);
-//   see also the notes inline about this choice
-//
-//   the 'all' refers to the increase of speed not allocating memory
-//   locally every time
-//
 int CSolveCap::gmresFlexPrecondSFastAll(CLin_Vector *b, CLin_Vector *x, double gmresTol)
 {
-	double normr, normb, tmp1, tmp2, length;
-	long size, i, j, iteration, ii;
-	bool ret;
-	int retInt;
+	return GmresSolve(b, x, gmresTol, true);
+}
 
-	// get system size
-	size = b->size();
-	// check consistency of size
-//	ASSERT(size == *x.size());
+int CSolveCap::gmresPrecondSFastAllX0(CLin_Vector *b, CLin_Vector *x, CLin_Vector *x0)
+{
+	return GmresSolve(b, x, m_clsGlobalVars.m_dGmresTol, false, x0);
+}
 
-	// if there is a preconditioner
-	if(m_clsGlobalVars.m_ucPrecondType != AUTOREFINE_PRECOND_NONE) {
-
-		// initial vector: having the approx inverted matrix, it is cheap to calculate the initial vector.
-		//  Simply put, to solve the preconditioned system
-		//  A * P * y = b and x = P * y, the best choice for y0 initial vector is b,
-		//  since a good P should be as similar as possible to inv(A), so A * P ~= I
-		//  So x0 = P * y0 = P * b
-		ComputePrecondVectFast(&m_clsGmres_x0, b, m_clsGlobalVars.m_ucPrecondType);
-
-		// r = b - A * x0;
-		// matrix - vector multiplication
-		retInt = m_clsMulthier.MultiplyMatByVec_fast(&m_clsGmres_v, &m_clsGmres_x0);
-		if(retInt != FC_NORMAL_END) {
-			return retInt;
-		}
-		// and get r
-		m_clsGmres_r = *b - m_clsGmres_v;
-		normr = mod(m_clsGmres_r);
-		normb = mod(*b);
+// Right-preconditioned GMRES, also for the real block representation of a complex
+// system. Finite non-convergence keeps the last solution and clears the solve's
+// convergence flag; numerical invalidity and operator errors follow the FC_* paths.
+int CSolveCap::GmresSolve(CLin_Vector *b, CLin_Vector *x, double gmresTol, bool flexible, CLin_Vector *x0)
+{
+	const long size = b->size();
+	const bool preconditioned = m_clsGlobalVars.m_ucPrecondType != AUTOREFINE_PRECOND_NONE;
+	if(x->size() != b->size() || (x0 != NULL && x0->size() != b->size())) {
+		return FC_GENERIC_ERROR;
 	}
-	else {
-		// no preconditioner; assumes that initial vector x0 is an all zeros vector
-		//
-		m_clsGmres_r = *b;
-		normr = mod(m_clsGmres_r);
-		normb = normr;
+	if(g_bFCContinue == false) {
+		return FC_USER_BREAK;
 	}
-
-	// allocate and init first column of Q matrix
-	m_pclsGmres_q[0] = CLin_Vector(m_clsGmres_r / normr);
-
-	// init first element of first row of the
-	// Q matrix of the QR factors of H; this should be 1,
-	// using normr will produce the first row
-	// multiplied by normr, which is used to compute the solution
-	// Remark: this is not the Q matrix whose columns are q(i,j)
-	m_clsGmres_g[0] = normr;
-
-	//
-	// if the norm of the residual is small enough,
-	// initial vector is a good enough solution
-	//
-	if(normr / normb < gmresTol) {
-		if(m_clsGlobalVars.m_ucPrecondType == AUTOREFINE_PRECOND_NONE) {
-			*x = CLin_Vector(size, 0.0);
-		}
-		else {
-			*x = m_clsGmres_x0;
-		}
+	const double normb = GmresNorm(*b);
+	if(!isfinite(normb) || !isfinite(gmresTol) || gmresTol <= 0.0) {
+		return FC_INVALID_RESULT;
+	}
+	// The zero vector solves every homogeneous linear system. Check it before
+	// calling the preconditioner or dividing by the right-hand-side norm.
+	if(normb == 0.0) {
+		*x = 0.0;
 		return FC_NORMAL_END;
 	}
 
+	double normr;
+	int ret;
+	if(x0 != NULL) {
+		m_clsGmres_x0 = *x0;
+	}
+	else if(preconditioned) {
+		PreconditionGmresVector(&m_clsGmres_x0, b);
+	}
+	else {
+		m_clsGmres_x0 = 0.0;
+	}
+	*x = m_clsGmres_x0;
+	if(x0 != NULL || preconditioned) {
+		ret = GmresResidual(b, x, normr);
+		if(ret != FC_NORMAL_END) {
+			return ret;
+		}
+	}
+	else {
+		m_clsGmres_r = *b;
+		normr = normb;
+	}
+	if(normr == 0.0 || normr / normb < gmresTol) {
+		return FC_NORMAL_END;
+	}
+	for(long k=0; k<size; k++) {
+		m_pclsGmres_q[0][k] = m_clsGmres_r[k] / normr;
+	}
+	m_clsGmres_g[0] = normr;
+
 	LogMsg("GMRES Iteration: ");
-
-	// start iteration
-	for(i = 0; i < SOLVE_GMRES_ITER_MAX && i < size; i++) {
-
+	long iterations = 0;
+	bool verified = false;
+	for(long i=0; i<SOLVE_GMRES_ITER_MAX && i<size; i++) {
 		if(g_bFCContinue == false) {
 			return FC_USER_BREAK;
 		}
-
-		//
-		// execute the i-th Arnoldi step, thus computing
-		// the i-th column of the H (upper Hessemberg) matrix
-		//
-
-		if(m_clsGlobalVars.m_bDumpResidual == true) {
-			LogMsg("%.3g ", normr);
+		if(m_clsGlobalVars.m_bDumpResidual) {
+			LogMsg("%.3g ", normr / normb);
 		}
-		LogMsg("%d ", i);
-
-		// allocate only if not already pre-allocated
+		LogMsg("%ld ", i);
 		if((long)m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_0_LEVEL] < i) {
-
-			ASSERT((long)m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_0_LEVEL] == i-1);
-
-			// allocate new column of h
-			// (remark: since vectors are 0-based, must
-			// allocate i+2 entries and not only i+1;
-			// i.e. variable 'i' starts at 0!)
-			ret = m_pclsGmres_h[i].newsize(i+2);
-			if(ret == false) {
+			if(!m_pclsGmres_h[i].newsize(i+2) || !m_pclsGmres_q[i+1].newsize(size)) {
 				return FC_OUT_OF_MEMORY;
 			}
-			g_clsMemUsage.m_ulGmresMem += (i + 2) * sizeof(double);
-			// allocate new column of q
-			ret = m_pclsGmres_q[i+1].newsize(size);
-			if(ret == false) {
-				return FC_OUT_OF_MEMORY;
-			}
-			g_clsMemUsage.m_ulGmresMem += size * sizeof(double);
-			// allocate new column of zf
-			ret = m_pclsGmres_zf[i].newsize(size);
-			if(ret == false) {
-				return FC_OUT_OF_MEMORY;
-			}
-			g_clsMemUsage.m_ulGmresMem += size * sizeof(double);
-
+			g_clsMemUsage.m_ulGmresMem += (i + 2 + size) * sizeof(double);
 			m_uiGmresPrealloc[AUTOREFINE_HIER_PRE_0_LEVEL]++;
 		}
+		CLin_Vector *source = &m_pclsGmres_q[i];
+		if(preconditioned) {
+			CLin_Vector *destination = flexible ? &m_pclsGmres_zf[i] : &m_clsGmres_Pq;
+			if(destination->size() != (unsigned long)size) {
+				if(!destination->newsize(size)) {
+					return FC_OUT_OF_MEMORY;
+				}
+				g_clsMemUsage.m_ulGmresMem += size * sizeof(double);
+			}
+			PreconditionGmresVector(destination, source);
+			if(!isfinite(GmresNorm(*destination))) {
+				return FC_INVALID_RESULT;
+			}
+			source = destination;
+		}
+		ret = MultiplyGmresMatrix(&m_clsGmres_v, source);
+		if(ret != FC_NORMAL_END) {
+			return ret;
+		}
+		const double before = GmresNorm(m_clsGmres_v);
+		if(!isfinite(before)) {
+			return FC_INVALID_RESULT;
+		}
 
-		// compute new vector
-		//
-		if(m_clsGlobalVars.m_ucPrecondType == AUTOREFINE_PRECOND_NONE) {
-			retInt = m_clsMulthier.MultiplyMatByVec_fast(&m_clsGmres_v, &m_pclsGmres_q[i]);
-			if(retInt != FC_NORMAL_END) {
-				return retInt;
+		// Modified Gram-Schmidt uses each updated remainder. A second pass after
+		// substantial cancellation restores orthogonality near a dependent vector.
+		for(long j=0; j<=i; j++) {
+			m_pclsGmres_h[i][j] = dot_prod(m_pclsGmres_q[j], m_clsGmres_v);
+			for(long k=0; k<size; k++) {
+				m_clsGmres_v[k] -= m_pclsGmres_h[i][j] * m_pclsGmres_q[j][k];
 			}
 		}
-		else {
-			// compute preconditioned vector
-			ComputePrecondVectFast(&m_pclsGmres_zf[i], &m_pclsGmres_q[i], m_clsGlobalVars.m_ucPrecondType);
-			// and use it in matrix - vector multiplication
-			retInt = m_clsMulthier.MultiplyMatByVec_fast(&m_clsGmres_v, &m_pclsGmres_zf[i]);
-			if(retInt != FC_NORMAL_END) {
-				return retInt;
+		double next = GmresNorm(m_clsGmres_v);
+		if(next < 0.5 * before) {
+			for(long j=0; j<=i; j++) {
+				double correction = dot_prod(m_pclsGmres_q[j], m_clsGmres_v);
+				m_pclsGmres_h[i][j] += correction;
+				for(long k=0; k<size; k++) {
+					m_clsGmres_v[k] -= correction * m_pclsGmres_q[j][k];
+				}
+			}
+			next = GmresNorm(m_clsGmres_v);
+		}
+		if(!isfinite(next)) {
+			return FC_INVALID_RESULT;
+		}
+		const bool breakdown = next <= DBL_EPSILON * before;
+		m_pclsGmres_h[i][i+1] = next;
+		if(!breakdown) {
+			for(long k=0; k<size; k++) {
+				m_pclsGmres_q[i+1][k] = m_clsGmres_v[k] / next;
 			}
 		}
 
-		m_clsGmres_w = m_clsGmres_v;
-
-		// orthogonalize it
-		for(j=0; j<=i; j++) {
-			m_pclsGmres_h[i][j] = dot_prod(m_pclsGmres_q[j], m_clsGmres_w);
-			for(ii=0; ii<(long)m_clsGmres_v.size(); ii++) {
-				m_clsGmres_v[ii] = m_clsGmres_v[ii] - m_pclsGmres_h[i][j] * m_pclsGmres_q[j][ii];
-			}
+		for(long j=0; j<i; j++) {
+			double first = m_pclsGmres_h[i][j], second = m_pclsGmres_h[i][j+1];
+			m_pclsGmres_h[i][j] = m_clsGmres_c[j] * first - m_clsGmres_s[j] * second;
+			m_pclsGmres_h[i][j+1] = m_clsGmres_c[j] * second + m_clsGmres_s[j] * first;
 		}
-
-		m_pclsGmres_h[i][i+1] = mod(m_clsGmres_v);
-
-		for(ii=0; ii<(long)m_clsGmres_v.size(); ii++) {
-			m_pclsGmres_q[i+1][ii] = m_clsGmres_v[ii] / (m_pclsGmres_h[i][i+1]);
+		double first = m_pclsGmres_h[i][i], second = m_pclsGmres_h[i][i+1];
+		double length = std::hypot(first, second);
+		if(!isfinite(length)) {
+			return FC_INVALID_RESULT;
 		}
-
-		//
-		// rotate new vector (Givens rotations) to compute
-		// the (R;0) matrix of the QR factors of H(j+1);
-		// this is done updating (Q';tmp')*H(j) = (R(j);0)
-		// to produce (Q';tmp')*H(j+1)=(R(j+1);0)
-		// Remark: the first time the loop is executed,
-		// this rotation does not happen
-		//
-
-		// apply all old rotations to new i-th column
-		// of the H matrix to get Q*H from H, but for the
-		// last two elements
-		for(j=0; j<i; j++) {
-			tmp1 = m_pclsGmres_h[i][j];
-			tmp2 = m_pclsGmres_h[i][j+1];
-			m_pclsGmres_h[i][j] = m_clsGmres_c[j] * tmp1 - m_clsGmres_s[j]* tmp2;
-			m_pclsGmres_h[i][j+1] = m_clsGmres_c[j] * tmp2 + m_clsGmres_s[j] * tmp1;
-		}
-
-		// compute the new Givens rotation to annihilate h[i][i+1]
-		tmp1 = m_pclsGmres_h[i][i];
-		tmp2 = m_pclsGmres_h[i][i+1];
-		length = sqrt(tmp1 * tmp1 + tmp2 * tmp2);
-		m_clsGmres_c[i] = tmp1/length;
-		m_clsGmres_s[i] = -tmp2/length;
-
-		// apply new Givens rotation to incomplete
-		// (Q';tmp')*H(j+1) matrix i-th column
-		// to get the complete (R(j+1);0)
-		m_pclsGmres_h[i][i] = m_clsGmres_c[i] * tmp1 - m_clsGmres_s[i] * tmp2;
-		// this should be zero anyway
-		//h(i+1,i) = c(i) * tmp2 + s(i) * tmp1;
-		m_pclsGmres_h[i][i+1] = 0;
-
-		//
-		// Compute recursively the first column of the (Q';tmp')
-		// matrix of the QR factors of H(j+1); this is used to
-		// get implicitly the norm of the residual and to compute
-		// the solution once the norm is small enough
-		//
-
-		tmp1 = m_clsGmres_g[i];
-		m_clsGmres_g[i] = m_clsGmres_c[i] * tmp1;
-		m_clsGmres_g[i+1] = m_clsGmres_s[i] * tmp1;
-
-		// this is the norm of the residual
-		// remark: || b - A*Qj*z || = normb * fabs(g[i+1])
-		// (see "Matrix analysis and applied linear algebra", Meyers)
-		// so fabs(g[i+1]) is already the norm of the residual
-		// weighted by the norm of b (i.e the % difference)
-		// However this is not true here, also verified
-		// explicitly calculating the residual norm, once the solution
-		// is found (see below), so the weighted formula is correct
-		normr = fabs(m_clsGmres_g[i+1]) / normb;
-
-		//
-		// if the norm of the residual is small enough,
-		// exit loop (and return solution)
-		//
-		if(normr < gmresTol) {
+		if(length == 0.0) {
+			// Singular Krylov system: the previous finite solution is still usable,
+			// but a vanishing Arnoldi vector alone does not prove convergence.
 			break;
 		}
-	}
+		m_clsGmres_c[i] = first / length;
+		m_clsGmres_s[i] = -second / length;
+		m_pclsGmres_h[i][i] = length;
+		m_pclsGmres_h[i][i+1] = 0.0;
+		m_clsGmres_g[i+1] = m_clsGmres_s[i] * m_clsGmres_g[i];
+		m_clsGmres_g[i] *= m_clsGmres_c[i];
+		normr = fabs(m_clsGmres_g[i+1]);
+		iterations = i+1;
+		verified = false;
 
-	if(i >= SOLVE_GMRES_ITER_MAX || i >= size) {
-		ErrMsg("\nError: not converging after %d iterations, norm of the residual is %.3f, while targeting %.3f\n", i, normr, gmresTol);
-		m_bGmresConverged = false;
-		// either case, since we ended the 'for' loop, 'i' has been incremented of one more;
-		// to avoid breaking the end of the arrays here below, we must decrease 'i'
-		i--;
+		if(normr / normb < gmresTol || breakdown || iterations == size || iterations == SOLVE_GMRES_ITER_MAX) {
+			ret = GmresSolution(x, iterations, flexible);
+			if(ret != FC_NORMAL_END) {
+				return ret;
+			}
+			ret = GmresResidual(b, x, normr);
+			if(ret != FC_NORMAL_END) {
+				return ret;
+			}
+			verified = true;
+			if(normr == 0.0 || normr / normb < gmresTol || breakdown) {
+				break;
+			}
+		}
 	}
-
-	if(m_clsGlobalVars.m_bDumpResidual == true) {
-		LogMsg("%.3f ", normr);
+	if(!verified) {
+		ret = GmresSolution(x, iterations, flexible);
+		if(ret != FC_NORMAL_END) {
+			return ret;
+		}
+		ret = GmresResidual(b, x, normr);
+		if(ret != FC_NORMAL_END) {
+			return ret;
+		}
 	}
 	LogMsg("\n");
-
-	//
-	// compute the solution, solving H(i)*z = normr * e1 for z using
-	// the first row of the Q matrix and the R matrix of the QR
-	// factorization of H; then the solution is x = Q(i)*z
-	//
-
-	iteration = i;
-
-	// H(i)*z = normb*e1 gives Q*R*z = normb*e1 -> R*z = Q'*normb*e1
-	// Since g(i) is already the first column of Q' multiplied by normb,
-	// it is the term Q'*normb*e1, so init the solution
-	m_clsGmres_z = m_clsGmres_g;
-
-	// then solve R*z = Q'*normr*e1 by back substitution,
-	// knowing that R is upper triangular
-	for(i = iteration; i>=0; i--) {
-		m_clsGmres_z[i]= m_clsGmres_z[i] / m_pclsGmres_h[i][i];
-		for(j = i-1; j>=0; j--) {
-			m_clsGmres_z[j] = m_clsGmres_z[j] - m_pclsGmres_h[i][j] * m_clsGmres_z[i];
-		}
+	if(m_clsGlobalVars.m_bDumpResidual) {
+		LogMsg("True relative residual: %.6g\n", normr / normb);
 	}
-
-
-	if(m_clsGlobalVars.m_ucPrecondType == AUTOREFINE_PRECOND_NONE) {
-		// multiply z by Q(i) to get y, the solution
-		// of the (possibly preconditioned) system
-		for(i=0; i<size; i++) {
-			for(j=0, tmp1 = 0; j<=iteration; j++) {
-				tmp1 += m_pclsGmres_q[j][i] * m_clsGmres_z[j];
-			}
-			m_clsGmres_y[i] = tmp1;
-		}
-
-		*x = m_clsGmres_y;
+	if(normr != 0.0 && !(normr / normb < gmresTol)) {
+		ErrMsg("Error: not converging after %ld iterations, true relative residual is %.6g, while targeting %.6g\n", iterations, normr / normb, gmresTol);
+		m_bGmresConverged = false;
 	}
-	else {
-		// multiply by z by zf matrix to undo all preconditioners to get the final solution,
-		// and sum x0 to consider also initial vector
-		//x = x0 + zf * z;
-
-		for(i = 0; i<size; i++) {
-			for(j = 0, tmp1 = 0.0; j<=iteration; j++) {
-				tmp1 += m_pclsGmres_zf[j][i] * m_clsGmres_z[j];
-			}
-			m_clsGmres_y[i] = tmp1;
-		}
-
-		*x = m_clsGmres_x0 + m_clsGmres_y;
-	}
-
-	// debug : explicit calculation of residual vector
-	// (is equal to normr*normb in this routine; this proves
-	// that normr here is weighted on normb)
-	//double residual2;
-	//CLin_Vector b_approx(size);
-	//m_clsMulthier.MultiplyMatByVec_fast(x, &b_approx);
-	//residual2 = mod(*b - b_approx);
-
 	return FC_NORMAL_END;
-}
-
-
-//   Generalized Minimum Residual Method with preconditioner and initial vector
-//
-//   x = gmresPrecond(A,b,P,x0) attempt to solve the preconditioned
-//   system A*P*y = b & x = P*y
-//   using x0 as initial vector of the solution iteration
-//
-//   Enrico Di Lorenzo, 2009/08/17
-//
-//   'fast' refers to the direct vector multiplication loops used
-//   instead of CLin_Vector class operator*, which requires
-//   the creation of a temp object for every assignment operation
-//
-//   the 's' on the other hand refers to the scilab gmres correction,
-//   to make convergence faster, that basically uses as residual
-//   a weighted residual: normr = || b - Ax || / || b ||, that is
-//   normr = fabs(g[i+1]) / normb;
-//   and not
-//   normr = fabs(g[i+1]);
-//   see also the notes inline about this choice
-//
-//   the 'all' refers to the increase of speed not allocating memory
-//   locally every time
-//
-int CSolveCap::gmresPrecondSFastAllX0(CLin_Vector *b, CLin_Vector *x, CLin_Vector *x0)
-{
-	// old, used with no x0 as initial vector
-	//CLin_Vector r(*b);
-	double normr, normb, tmp1, tmp2, length;
-	long size, i, j, iteration, ii;
-	bool ret;
-	int retInt;
-
-	// get system size
-	size = b->size();
-	// check consistency of size
-//	ASSERT(size == *x.size());
-
-	// r = b - A * x0;
-	// matrix - vector multiplication
-	retInt = m_clsMulthier.MultiplyMatByVec_fast(&m_clsGmres_v, x0);
-	if(retInt != FC_NORMAL_END) {
-		return retInt;
-	}
-	// and get r
-	m_clsGmres_r = *b - m_clsGmres_v;
-	normr = mod(m_clsGmres_r);
-	normb = mod(*b);
-
-
-	// allocate and init first column of Q matrix
-	m_pclsGmres_q[0] = CLin_Vector(m_clsGmres_r / normr);
-
-	// init first element of first row of the
-	// Q matrix of the QR factors of H; this should be 1,
-	// using normr will produce the first row
-	// multiplied by normr, which is used to compute the solution
-	// Remark: this is not the Q matrix whose columns are q(i,j)
-	m_clsGmres_g[0] = normr;
-
-	//
-	// if the norm of the residual is small enough,
-	// initial vector is a good enough solution
-	//
-	if(normr / normb < m_clsGlobalVars.m_dGmresTol) {
-		*x = *x0;
-		return 0;
-	}
-
-	LogMsg("GMRES Iteration: ");
-
-	// start iteration
-	for(i = 0; i < SOLVE_GMRES_ITER_MAX && i < size; i++) {
-
-		//
-		// execute the i-th Arnoldi step, thus computing
-		// the i-th column of the H (upper Hessemberg) matrix
-		//
-
-		if(m_clsGlobalVars.m_bDumpResidual == true) {
-			LogMsg("%.3g ", normr);
-		}
-		LogMsg("%d ", i);
-
-		// allocate new column of h
-		// (remark: since vectors are 0-based, must
-		// allocate i+2 entries and not only i+1;
-		// i.e. variable 'i' starts at 0!)
-		ret = m_pclsGmres_h[i].newsize(i+2);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += (i+2) * sizeof(double);
-		// allocate new column of q
-		ret = m_pclsGmres_q[i+1].newsize(size);
-		if(ret == false) {
-			return FC_OUT_OF_MEMORY;
-		}
-		g_clsMemUsage.m_ulGmresMem += size * sizeof(double);
-
-		// compute new vector
-		//
-		if(m_clsGlobalVars.m_ucPrecondType == AUTOREFINE_PRECOND_NONE) {
-			retInt = m_clsMulthier.MultiplyMatByVec_fast(&m_clsGmres_v, &m_pclsGmres_q[i]);
-			if(retInt != FC_NORMAL_END) {
-				return retInt;
-			}
-		}
-		else {
-			// compute preconditioned vector
-			ComputePrecondVectFast(&m_clsGmres_Pq, &m_pclsGmres_q[i], m_clsGlobalVars.m_ucPrecondType);
-			// and use it in matrix - vector multiplication
-			retInt = m_clsMulthier.MultiplyMatByVec_fast(&m_clsGmres_Pq, &m_clsGmres_v);
-			if(retInt != FC_NORMAL_END) {
-				return retInt;
-			}
-		}
-
-		m_clsGmres_w = m_clsGmres_v;
-
-		// orthogonalize it
-		for(j=0; j<=i; j++) {
-			m_pclsGmres_h[i][j] = dot_prod(m_pclsGmres_q[j], m_clsGmres_w);
-			for(ii=0; ii<(long)m_clsGmres_v.size(); ii++) {
-				m_clsGmres_v[ii] = m_clsGmres_v[ii] - m_pclsGmres_h[i][j] * m_pclsGmres_q[j][ii];
-			}
-		}
-
-		m_pclsGmres_h[i][i+1] = mod(m_clsGmres_v);
-
-		for(ii=0; ii<(long)m_clsGmres_v.size(); ii++) {
-			m_pclsGmres_q[i+1][ii] = m_clsGmres_v[ii] / (m_pclsGmres_h[i][i+1]);
-		}
-
-		//
-		// rotate new vector (Givens rotations) to compute
-		// the (R;0) matrix of the QR factors of H(j+1);
-		// this is done updating (Q';tmp')*H(j) = (R(j);0)
-		// to produce (Q';tmp')*H(j+1)=(R(j+1);0)
-		// Remark: the first time the loop is executed,
-		// this rotation does not happen
-		//
-
-		// apply all old rotations to new i-th column
-		// of the H matrix to get Q*H from H, but for the
-		// last two elements
-		for(j=0; j<i; j++) {
-			tmp1 = m_pclsGmres_h[i][j];
-			tmp2 = m_pclsGmres_h[i][j+1];
-			m_pclsGmres_h[i][j] = m_clsGmres_c[j] * tmp1 - m_clsGmres_s[j]* tmp2;
-			m_pclsGmres_h[i][j+1] = m_clsGmres_c[j] * tmp2 + m_clsGmres_s[j] * tmp1;
-		}
-
-		// compute the new Givens rotation to annihilate h[i][i+1]
-		tmp1 = m_pclsGmres_h[i][i];
-		tmp2 = m_pclsGmres_h[i][i+1];
-		length = sqrt(tmp1 * tmp1 + tmp2 * tmp2);
-		m_clsGmres_c[i] = tmp1/length;
-		m_clsGmres_s[i] = -tmp2/length;
-
-		// apply new Givens rotation to incomplete
-		// (Q';tmp')*H(j+1) matrix i-th column
-		// to get the complete (R(j+1);0)
-		m_pclsGmres_h[i][i] = m_clsGmres_c[i] * tmp1 - m_clsGmres_s[i] * tmp2;
-		// this should be zero anyway
-		//h(i+1,i) = c(i) * tmp2 + s(i) * tmp1;
-		m_pclsGmres_h[i][i+1] = 0;
-
-		//
-		// Compute recursively the first column of the (Q';tmp')
-		// matrix of the QR factors of H(j+1); this is used to
-		// get implicitly the norm of the residual and to compute
-		// the solution once the norm is small enough
-		//
-
-		tmp1 = m_clsGmres_g[i];
-		m_clsGmres_g[i] = m_clsGmres_c[i] * tmp1;
-		m_clsGmres_g[i+1] = m_clsGmres_s[i] * tmp1;
-
-		// this is the norm of the residual
-		// remark: || b - A*Qj*z || = normb * fabs(g[i+1])
-		// (see "Matrix analysis and applied linear algebra", Meyers)
-		// so fabs(g[i+1]) is already the norm of the residual
-		// weighted by the norm of b (i.e the % difference)
-		// However this is not true here, also verified
-		// explicitly calculating the residual norm, once the solution
-		// is found (see below), so the weighted formula is correct
-		normr = fabs(m_clsGmres_g[i+1]) / normb;
-
-		//
-		// if the norm of the residual is small enough,
-		// exit loop (and return solution)
-		//
-		if(normr < m_clsGlobalVars.m_dGmresTol) {
-			break;
-		}
-	}
-
-	if(i >= SOLVE_GMRES_ITER_MAX || i >= size) {
-		ErrMsg("\nError: not converging after %d iterations, norm of the residual is %.3f, while targeting %.3f\n", i, normr, m_clsGlobalVars.m_dGmresTol);
-		m_bGmresConverged = false;
-		// either case, since we ended the 'for' loop, 'i' has been incremented of one more;
-		// to avoid breaking the end of the arrays here below, we must decrease 'i'
-		i--;
-	}
-
-	if(m_clsGlobalVars.m_bDumpResidual == true) {
-		LogMsg("%.3f ", normr);
-	}
-	LogMsg("\n");
-
-	//
-	// compute the solution, solving H(i)*z = normr * e1 for z using
-	// the first row of the Q matrix and the R matrix of the QR
-	// factorization of H; then the solution is x = Q(i)*z
-	//
-
-	iteration = i;
-
-	// H(i)*z = normb*e1 gives Q*R*z = normb*e1 -> R*z = Q'*normb*e1
-	// Since g(i) is already the first column of Q' multiplied by normb,
-	// it is the term Q'*normb*e1, so init the solution
-	m_clsGmres_z = m_clsGmres_g;
-
-	// then solve R*z = Q'*normr*e1 by back substitution,
-	// knowing that R is upper triangular
-	for(i = iteration; i>=0; i--) {
-		m_clsGmres_z[i]= m_clsGmres_z[i] / m_pclsGmres_h[i][i];
-		for(j = i-1; j>=0; j--) {
-			m_clsGmres_z[j] = m_clsGmres_z[j] - m_pclsGmres_h[i][j] * m_clsGmres_z[i];
-		}
-	}
-
-
-	// multiply z by Q(i) to get y, the solution
-	// of the (possibly preconditioned) system
-	for(i=0; i<size; i++) {
-		for(j=0, tmp1 = 0; j<=iteration; j++) {
-			tmp1 += m_pclsGmres_q[j][i] * m_clsGmres_z[j];
-		}
-		m_clsGmres_y[i] = tmp1;
-	}
-
-	if(m_clsGlobalVars.m_ucPrecondType != AUTOREFINE_PRECOND_NONE) {
-		// undo the preconditioner to get x, the final solution,
-		// also considering initial vector in the solution
-		//x = x0 + P * y;
-		ComputePrecondVectFast(x, &m_clsGmres_y, m_clsGlobalVars.m_ucPrecondType);
-		*x = *x0 + *x;
-	}
-	else {
-		// consider initial vector in the solution
-		//x = x0 + y;
-		*x = *x0 + m_clsGmres_y;
-	}
-
-	// debug : explicit calculation of residual vector
-	// (is equal to normr*normb in this routine; this proves
-	// that normr here is weighted on normb)
-	//double residual2;
-	//CLin_Vector b_approx(size);
-	//m_clsMulthier.MultiplyMatByVec_fast(x, &b_approx);
-	//residual2 = mod(*b - b_approx);
-
-	return 0;
 }
 
 void CSolveCap::ComputePrecondVectFast(CLin_Vector *Pq, CLin_Vector *q, unsigned char precondType)
