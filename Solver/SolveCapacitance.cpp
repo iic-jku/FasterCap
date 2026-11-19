@@ -1559,7 +1559,7 @@ int CSolveCap::AllocateMemory()
 		// leaf pointers to super preconditioner high level leaves;
 		// in case it was already declared, destroy and re-declare (can change length)
 		if(m_puiSupPrecondIndex != NULL) {
-			delete m_puiSupPrecondIndex;
+			delete [] m_puiSupPrecondIndex;
 		}
 		// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
 		SAFENEW_ARRAY_RET(unsigned int, m_puiSupPrecondIndex, numPanels_0, g_clsMemUsage.m_ulPrecondMem)
@@ -1568,7 +1568,7 @@ int CSolveCap::AllocateMemory()
 		// the results of the super precond multiplication to the leaves (correct weighting,
 		// in case of non-uniform panel discretizations)
 		if(m_pfSupPrecondAreae != NULL) {
-			delete m_pfSupPrecondAreae;
+			delete [] m_pfSupPrecondAreae;
 		}
 		// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
 		SAFENEW_ARRAY_RET(float, m_pfSupPrecondAreae, numPanels_0, g_clsMemUsage.m_ulPrecondMem)
@@ -1594,7 +1594,7 @@ int CSolveCap::AllocateMemory()
 
 		// number of elements in each block (in case there are less than 'm_clsGlobalVars.m_uiBlockPreSize')
 		if(m_pucBlockPrecondDim != NULL) {
-			delete m_pucBlockPrecondDim;
+			delete [] m_pucBlockPrecondDim;
 		}
 		// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
 		SAFENEW_ARRAY_RET(unsigned char, m_pucBlockPrecondDim, numElems_0, g_clsMemUsage.m_ulPrecondMem);
@@ -1691,15 +1691,15 @@ void CSolveCap::DeallocatePrecond()
 		m_pclsSupPotMtx = NULL;
 	}
 	if(m_clsSupPrecondElements != NULL) {
-		delete m_clsSupPrecondElements;
+		delete [] m_clsSupPrecondElements;
 		m_clsSupPrecondElements = NULL;
 	}
 	if(m_puiSupPrecondIndex != NULL) {
-		delete m_puiSupPrecondIndex;
+		delete [] m_puiSupPrecondIndex;
 		m_puiSupPrecondIndex = NULL;
 	}
 	if(m_pfSupPrecondAreae != NULL) {
-		delete m_pfSupPrecondAreae;
+		delete [] m_pfSupPrecondAreae;
 		m_pfSupPrecondAreae = NULL;
 	}
 
@@ -1707,7 +1707,7 @@ void CSolveCap::DeallocatePrecond()
 	// used in block preconditioner
 
 	if(m_clsBlockPrecondElements != NULL) {
-		delete m_clsBlockPrecondElements;
+		delete [] m_clsBlockPrecondElements;
 		m_clsBlockPrecondElements = NULL;
 	}
 	if(m_pdBlockPrecond != NULL) {
@@ -1715,7 +1715,7 @@ void CSolveCap::DeallocatePrecond()
 		m_pdBlockPrecond = NULL;
 	}
 	if(m_pucBlockPrecondDim != NULL) {
-		delete m_pucBlockPrecondDim;
+		delete [] m_pucBlockPrecondDim;
 		m_pucBlockPrecondDim = NULL;
 	}
 
@@ -3464,7 +3464,7 @@ void CSolveCap::DebugDumpUncomprPotMtx()
 
 		fclose(fp);
 
-		delete m_pLeafPanels;
+		delete [] m_pLeafPanels;
 	}
 	// 2D case
 	else {
@@ -3516,7 +3516,7 @@ void CSolveCap::DebugDumpUncomprPotMtx()
 
 		fclose(fp);
 
-		delete m_pLeafSegments;
+		delete [] m_pLeafSegments;
 	}
 }
 
