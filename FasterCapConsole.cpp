@@ -277,10 +277,10 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 
 			// '-p' is type of preconditioner
 			else if(argStr[1] == 'p') {
-				if(argStr[2] == 'N' || argStr[2] == 'n') {
+				if((argStr[2] == 'N' || argStr[2] == 'n') && argStr[3] == '\0') {
 					globalVars.m_ucPrecondType = AUTOREFINE_PRECOND_NONE;
 				}
-				else if (argStr[2] == 'J' || argStr[2] == 'j') {
+				else if ((argStr[2] == 'J' || argStr[2] == 'j') && argStr[3] == '\0') {
 					globalVars.m_ucPrecondType |= AUTOREFINE_PRECOND_JACOBI;
 				}
 				else if (argStr[2] == 'B' || argStr[2] == 'b') {
@@ -298,22 +298,22 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 			}
 
 			// '-c' is dump charge densities in output file
-			else if(argStr[1] == 'c') {
+			else if(argStr[1] == 'c' && argStr[2] == '\0') {
                 globalVars.m_bOutputCharge = true;
 			}
 			
 			// '-r' is dump residual at every GMRES step
-			else if(argStr[1] == 'r') {
+			else if(argStr[1] == 'r' && argStr[2] == '\0') {
 				globalVars.m_bDumpResidual = true;
 			}
 
 			// '-i' is dump detailed time and memory information
-			else if(argStr[1] == 'i') {
+			else if(argStr[1] == 'i' && argStr[2] == '\0') {
 				globalVars.m_bDumpTimeMem = true;
 			}
 
 			// '-v' is provide verbose output
-			else if(argStr[1] == 'v') {
+			else if(argStr[1] == 'v' && argStr[2] == '\0') {
 				globalVars.m_bVerboseOutput = true;
 			}
 
@@ -325,7 +325,7 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 			// '-o' is output refined geometry to file (in FastCap2 format),
 			// '-oi' is dump input geometry, no refinement, in FastCap2 format and stop
 			//       (so actual value of 'm_bOutputGeo' does not matter)
-			else if(argStr[1] == 'o') {
+			else if(strcmp(argStr, "-o") == 0 || strcmp(argStr, "-oi") == 0) {
 				if(argStr[2] == 'i') {
 					globalVars.m_bDumpInputGeo = true;
 				}
@@ -335,18 +335,18 @@ bool FasterCapConsole::ParseCmdLine(const char *commandStr, CAutoRefGlobalVars &
 			}
 
 			// '-e' is output capacitance matrix to file
-			else if(argStr[1] == 'e') {
+			else if(argStr[1] == 'e' && argStr[2] == '\0') {
 				globalVars.m_bOutputCapMtx = true;
 			}
 
 			// '-g' is galerkin scheme (as opposite to default collocation)
-			else if(argStr[1] == 'g') {
+			else if(argStr[1] == 'g' && argStr[2] == '\0') {
 				globalVars.m_cScheme = AUTOREFINE_GALERKIN;
 			}
 
 			// '-a' is automatic refinement and selection of parameters
 			else if(argStr[1] == 'a') {
-				if(argStr[2] == 'p' || argStr[2] == 'P') {
+				if((argStr[2] == 'p' || argStr[2] == 'P') && argStr[3] == '\0') {
 					globalVars.m_bAutoPrecond = true;
 				}
 				else {
