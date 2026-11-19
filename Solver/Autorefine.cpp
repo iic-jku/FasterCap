@@ -185,6 +185,8 @@ CAutoRefine::CAutoRefine()
 	m_ulUniquePotChunkIDs = NULL;
 	m_pucDielIndex = NULL;
 	m_pNodes = NULL;
+	m_ulBlocksNum = 0;
+	m_ucInteractionLevel = AUTOREFINE_HIER_PRE_0_LEVEL;
 
 	// init seed used in guessing unique file IDs
 	srand(time(NULL));
