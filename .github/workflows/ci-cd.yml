@@ -283,6 +283,25 @@ jobs:
         --build-config Release
         --output-on-failure
 
+    - name: "[C++] Capture controlled plate comparison"
+      shell: python
+      run: |
+        import os
+        import subprocess
+        import sys
+        executable = "build/Release/FasterCap.exe" if os.name == "nt" else "build/FasterCap"
+        subprocess.run([sys.executable, "FastFieldSolvers/FasterCap/tests/check_platform_comparison.py",
+                        "capture", "--fastercap", executable, "--output-dir", "platform-report"], check=True)
+
+    - name: "[C++] Upload numerical reports"
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: platform-report-${{ matrix.os }}-${{ matrix.cpu }}
+        path: platform-report/
+        retention-days: 7
+        if-no-files-found: warn
+
     - name: "[C++] Archive artifacts (UNIX)"
       if: contains(matrix.arch, 'linux') || contains(matrix.arch, 'darwin')
       run: |
@@ -333,8 +352,8 @@ jobs:
         retention-days: 7
         if-no-files-found: error
 
-  # macOS arm64 runners are often unavailable for hours: a job of its own, so that 'test' and
-  # 'update_assets' don't wait for it
+  # Non-macOS package tests run independently; publication waits for every platform's
+  # numerical comparison, including macOS arm64
   build_macos:
     name: Build ${{matrix.os}}/${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
@@ -350,6 +369,35 @@ jobs:
             cpp_compiler: clang++
 
     steps: *build_steps
+
+  compare_platforms:
+    name: Compare full-precision platform matrices
+    runs-on: ubuntu-latest
+    needs: [build, build_macos]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: platform-report-*
+          path: platform-reports
+      - name: Compare every supported platform pair
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess
+          import sys
+          captures = sorted(Path("platform-reports").glob("*/capture.json"))
+          if len(captures) != 4:
+              raise SystemExit("expected Linux 22/24, Windows and macOS reports")
+          subprocess.run([sys.executable, "tests/check_platform_comparison.py", "compare",
+                          *map(str, captures), "--output", "platform-comparison.json"], check=True)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: platform-comparison
+          path: platform-comparison.json
+          retention-days: 7
+          if-no-files-found: warn
 
   test:
     name: Test ${{matrix.os}}/${{ matrix.arch }}
@@ -482,7 +530,7 @@ jobs:
 
   update_assets:
     name: "Update Assets"
-    needs: [build, test, test_deb]
+    needs: [build, test, test_deb, compare_platforms]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
