@@ -85,6 +85,24 @@ int main()
         std::printf("FAILED quadratic triangle flux: %.17g expected 1\n", mean);
         ++failures;
     }
+    // Stored float centroids are rounded, even when the vertices are exact.
+    // Integration must include the first moment about that stored center.
+    for(double offset : {0.0, 1048576.0}) {
+        CAutoPanel translated;
+        for(int i=0; i<3; ++i) {
+            translated.m_clsVertex[i].pos(offset+triangle[i].x,
+                                          offset+triangle[i].y, offset+triangle[i].z);
+        }
+        translated.CalcPanelGeomPar();
+        C3DVector storedCenter = translated.GetCentroid();
+        leaf.Clear();
+        leaf.AddParent(polynomial, storedCenter-C3DVector(offset,offset,offset));
+        mean = leaf.MeanNormalField(translated.m_clsVertex, storedCenter, C3DVector(1,0,0));
+        if(std::fabs(mean-1.0) > 1e-12) {
+            std::printf("FAILED rounded-center triangle flux at %g: %.17g expected 1\n", offset, mean);
+            ++failures;
+        }
+    }
     for(int grouping=0; grouping<2; ++grouping) {
         CAutoPanel leaves[4], left, right, root;
         const double vertices[4][3][3] = {

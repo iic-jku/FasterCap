@@ -120,13 +120,30 @@ public:
 	double MeanNormalField(const C3DVector_float vertices[3], C3DVector center, C3DVector normal) const
 	{
 		C3DVector mean = m_clsField;
-		// The triangle covariance about its centroid is sum(v_i v_i^T)/12.
+		C3DVector shift[3], sum(0,0,0);
 		for(int vertex=0; vertex<3; ++vertex) {
-			C3DVector shift = C3DVector(vertices[vertex]) - center;
-			for(int a=0; a<3; ++a)
-				for(int b=0; b<3; ++b)
-					for(int c=0; c<3; ++c)
-						mean[a] += m_dHessian[DielectricExpansion::Index(a,b,c)] * shift[b]*shift[c]/24.0;
+			shift[vertex] = C3DVector(vertices[vertex]) - center;
+			sum += shift[vertex];
+		}
+		// The stored float center need not equal the triangle's exact centroid.
+		// Its first moment is sum/3; its second moment is
+		// (sum*sum^T + sum_i(shift_i*shift_i^T))/12.
+		double halfSecond[6];
+		for(int b=0; b<3; ++b) {
+			for(int c=b; c<3; ++c) {
+				double moment = sum[b]*sum[c];
+				for(int vertex=0; vertex<3; ++vertex)
+					moment += shift[vertex][b]*shift[vertex][c];
+				halfSecond[DielectricExpansion::Index(b,c)] = moment / 24.0;
+			}
+		}
+		for(int a=0; a<3; ++a) {
+			for(int b=0; b<3; ++b) {
+				mean[a] += m_dGradient[DielectricExpansion::Index(a,b)] * sum[b]/3.0;
+				for(int c=0; c<3; ++c)
+					mean[a] += m_dHessian[DielectricExpansion::Index(a,b,c)] *
+						halfSecond[DielectricExpansion::Index(b,c)];
+			}
 		}
 		return DotProd(mean,normal);
 	}

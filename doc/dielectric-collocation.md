@@ -22,8 +22,10 @@ A neutral group can still have nonzero moments and must not be skipped.
 Each multiplication clears the transient state, gathers source moments, accumulates
 linked fields, and translates local expansions down to physical target triangles.
 Leaf evaluation integrates the quadratic field over the triangle before projecting
-onto its oriented normal. Its covariance about the centroid is
-`sum((vertex-centroid)*(vertex-centroid)^T)/12`.
+onto its oriented normal. The stored float center can differ from the exact triangle
+centroid, so both first and second moments about that center contribute. For vertex
+displacements `u_i` and `s = sum(u_i)`, these moments are `s/3` and
+`(s*s^T + sum(u_i*u_i^T))/12`.
 
 - A parent normal cannot replace the different or opposite normals of its leaves
 - Translating only target fields or correcting only source moments omits coupled terms
