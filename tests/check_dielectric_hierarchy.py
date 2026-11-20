@@ -40,6 +40,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fastercap", required=True)
     parser.add_argument("--workdir", type=Path, required=True)
+    parser.add_argument("--high-contrast", action="store_true")
     args = parser.parse_args()
     root = args.workdir.resolve()
     executable = str(Path(args.fastercap).resolve())
@@ -47,10 +48,17 @@ def main():
     # Numerical reports intentionally refuse to overwrite an existing file.
     with tempfile.TemporaryDirectory(prefix="run-", dir=root) as temporary:
         root = Path(temporary)
-        for name, permittivity, offset in [("concentric", 10.0, (0, 0, 0)),
-                                          ("offset", 10.0, (0.4, -0.2, 0.15)),
-                                          ("lossy", 10.0-2.0j, (0.4, -0.2, 0.15))]:
-            geometry = geometries.coated_spheres_geometry(permittivity, depth=2, offset=offset)
+        cases = [("concentric", 10.0, (0, 0, 0), 2.0),
+                 ("offset", 10.0, (0.4, -0.2, 0.15), 2.0),
+                 ("lossy", 10.0-2.0j, (0.4, -0.2, 0.15), 2.0)]
+        if args.high_contrast:
+            cases = [("concentric100", 100.0, (0, 0, 0), 2.0),
+                     ("offset100", 100.0, (0.4, -0.2, 0.15), 2.0),
+                     ("thin100", 100.0, (0, 0, 0), 1.125)]
+        matrix_tolerance = 0.015 if args.high_contrast else 0.005
+        for name, permittivity, offset, radius in cases:
+            geometry = geometries.coated_spheres_geometry(permittivity, depth=2,
+                                                          offset=offset, coat_radius=radius)
             reference, full_links = solve(executable, root / name / "direct", geometry, "1e-40")
             assert full_links == 960 * 959
             for distance in ("1e-35", "1e-36"):
@@ -59,7 +67,7 @@ def main():
                 error = max(abs(a-b)/abs(b) for row, ref in zip(matrix, reference) for a, b in zip(row, ref))
                 print("%s -d%s: %d links, %.6g%% difference from direct" %
                       (name, distance, links, 100*error))
-                assert error <= 0.005, "hierarchy exceeds its 0.5% matrix-error budget"
+                assert error <= matrix_tolerance, "hierarchy exceeds its matrix-error budget"
     return 0
 
 

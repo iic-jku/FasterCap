@@ -29,6 +29,7 @@
 #define AFX_AUTOPANEL_H__E89AAF21_5486_11D5_9282_04F014C10000__INCLUDED_
 
 #include "SolverGlobal.h"
+#include "DielectricExpansion.h"
 
 #include <deque>
 #include <string>
@@ -197,8 +198,9 @@ public:
 	unsigned char m_ucMaxSide;
 	C3DVector_float m_clsVertex[3];
 	C3DVector_float m_clsNormal, m_clsCentroid;
-	// Transient unprojected field from grouped dielectric interactions.
-	C3DVector m_clsField;
+	// Transient coupled source/target expansion for dielectric collocation.
+	CDielectricChargeMoments m_clsChargeMoments;
+	CDielectricFieldExpansion m_clsFieldExpansion;
 
 protected:
     // virtual functions

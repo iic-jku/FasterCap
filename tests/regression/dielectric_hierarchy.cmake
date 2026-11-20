@@ -8,3 +8,15 @@ add_test(NAME dielectric_hierarchy_matrix
         --fastercap $<TARGET_FILE:FasterCap>
         --workdir ${CMAKE_CURRENT_BINARY_DIR}/dielectric_hierarchy_matrix)
 set_tests_properties(dielectric_hierarchy_matrix PROPERTIES TIMEOUT 60)
+
+# At contrast 100, hierarchy errors are amplified by the dielectric solve.
+# Budget 1.5% additional error relative to the identical direct mesh, while
+# retaining the 2% analytic and 1% reciprocity limits. The coarse direct mesh
+# itself has about 1% geometric error. Nine serial 960-panel solves exercise
+# concentric, eccentric and thin layers without automatic mesh growth.
+add_test(NAME dielectric_hierarchy_high_contrast
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_dielectric_hierarchy.py
+        --fastercap $<TARGET_FILE:FasterCap>
+        --workdir ${CMAKE_CURRENT_BINARY_DIR}/dielectric_hierarchy_high_contrast
+        --high-contrast)
+set_tests_properties(dielectric_hierarchy_high_contrast PROPERTIES TIMEOUT 60)
