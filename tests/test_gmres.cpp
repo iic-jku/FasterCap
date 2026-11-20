@@ -38,12 +38,59 @@ public:
         return flexible ? gmresFlexPrecondSFastAll(&b, &x, tolerance) : gmresPrecondSFastAll(&b, &x, tolerance);
     }
 
+    void Automatic(double tolerance) { m_clsGlobalVars.m_bAuto = true; m_clsGlobalVars.m_dAutoMaxErr = tolerance; }
+
+    void CheckPhysicalCorrection(bool complex)
+    {
+        CAutoConductor dielectric, conductor;
+        dielectric.m_bIsDiel = true;
+        dielectric.m_ulLeafPanelNum = 1;
+        conductor.m_bIsDiel = false;
+        conductor.m_ulLeafPanelNum = 2;
+        conductor.m_dSurfOutperm[0][0] = 10.0;
+        conductor.m_dSurfOutperm[0][1] = complex ? -2.0 : 0.0;
+        conductor.m_dSurfOutperm[1][0] = 1.0;
+        conductor.m_dSurfOutperm[1][1] = 0.0;
+        unsigned char materials[] = {0,0,1};
+        m_clsMulthier.m_pucDielIndex = materials;
+        m_clsMulthier.m_ulPanelNum[0] = 3;
+        m_clsMulthier.m_stlConductors.push_back(&dielectric);
+        m_clsMulthier.m_stlConductors.push_back(&conductor);
+        m_clsGlobalVars.m_ucHasCmplxPerm = complex ? AUTOREFINE_CPLX_PERM : AUTOREFINE_REAL_PERM;
+        CLin_Vector charge(complex ? 6 : 3, 0.0), correction(charge.size(), 0.0);
+        charge[0] = 1e8; charge[1] = charge[2] = 1.0;
+        correction[1] = complex ? 10.0/104.0 : 0.1;
+        if(complex) correction[4] = 2.0/104.0;
+        correction[2] = -1.0;
+        double ratio = CSolveCap::GmresCorrectionRatio(correction, charge);
+        double expected = 2.0/std::hypot(11.0, complex ? 2.0 : 0.0);
+        check("weighted correction bounds cancellation despite large dielectric charge",
+              std::fabs(ratio-expected) < 1e-14);
+        // These synthetic material records and index bytes are stack-owned.
+        m_clsMulthier.m_stlConductors.clear();
+        m_clsMulthier.m_pucDielIndex = NULL;
+        m_clsMulthier.m_ulPanelNum[0] = 0;
+    }
+
     bool Converged() const { return m_bGmresConverged; }
     CLin_Matrix m_clsMatrix;
     long m_lProducts, m_lPreconditions, m_lFailProduct, m_lInvalidProduct, m_lPerturbProduct;
     bool m_bInvalidPreconditioner, m_bVariablePreconditioner;
 
 protected:
+    double GmresCorrectionRatio(const CLin_Vector &correction, const CLin_Vector &charge) override
+    {
+        // These synthetic systems have no conductor geometry; use their known
+        // solution-vector norm as the observable. Physical tests cover the
+        // production conductor/permittivity projection.
+        double delta = 0.0, value = 0.0;
+        for(unsigned long i=0; i<charge.size(); ++i) {
+            delta = std::hypot(delta, correction[i]);
+            value = std::hypot(value, charge[i]);
+        }
+        return delta == 0.0 ? 0.0 : delta/value;
+    }
+
     int MultiplyGmresMatrix(CLin_Vector *result, CLin_Vector *x) override
     {
         m_lProducts++;
@@ -202,8 +249,61 @@ static void errors(bool flexible)
     check("cancellation preserved", ret == FC_USER_BREAK);
 }
 
+static void automaticAccuracy()
+{
+    // Tiny residual in the weak mode hides an order-one solution error.
+    // Retrying against the original RHS at a merely smaller tolerance would
+    // accept exactly the same wrong iterate. Solve the residual equation instead.
+    CLin_Matrix matrix = identity(2);
+    matrix[1][1] = 1e-12;
+    for(bool flexible : {false, true}) {
+        for(double scale : {1e-200, 1.0, 1e200}) {
+            CSmallGmres automatic(matrix);
+            automatic.Automatic(0.1);
+            CLin_Vector b(2), x(2);
+            b[0] = scale; b[1] = scale*1e-12;
+            int ret = automatic.SolveSystem(b, x, 0.05, flexible);
+            check("automatic solve resolves hidden weak mode", ret == FC_NORMAL_END && automatic.Converged()
+                  && std::fabs(x[0]/scale-1.0) < 1e-12 && std::fabs(x[1]/scale-1.0) < 1e-12);
+        }
+        CLin_Vector b(2), x(2);
+        b[0] = 1.0; b[1] = 1e-12;
+        CSmallGmres manual(matrix);
+        int ret = manual.SolveSystem(b, x, 0.05, flexible);
+        check("manual tolerance keeps its existing residual contract", ret == FC_NORMAL_END
+              && manual.Converged() && x[1] < 1e-10 && relativeResidual(matrix,b,x) < 0.05);
+
+        CSmallGmres failed(matrix);
+        failed.Automatic(0.1);
+        failed.m_lFailProduct = 4; // First correction's matrix product.
+        ret = failed.SolveSystem(b,x,0.05,flexible);
+        check("automatic correction propagates operator errors", ret == FC_CANNOT_GO_OOC);
+        CSmallGmres invalid(matrix);
+        invalid.Automatic(0.1);
+        invalid.m_lInvalidProduct = 4;
+        ret = invalid.SolveSystem(b,x,0.05,flexible);
+        check("automatic correction rejects nonfinite products", ret == FC_INVALID_RESULT);
+
+        CLin_Matrix boundedMatrix = identity(2);
+        boundedMatrix[1][1] = 2.0;
+        CSmallGmres bounded(boundedMatrix);
+        bounded.Automatic(1e-12);
+        b = 1.0;
+        // Deliberately demand far smaller forward error than each inner solve's
+        // residual target: the refinement work limit must report failure.
+        ret = bounded.SolveSystem(b,x,0.4,flexible);
+        check("automatic correction work is bounded and cannot claim convergence",
+              ret == FC_NORMAL_END && !bounded.Converged() && bounded.m_lProducts <= 60
+              && std::isfinite(x[0]) && std::isfinite(x[1]));
+    }
+    CSmallGmres physical(identity(3));
+    physical.CheckPhysicalCorrection(false);
+    physical.CheckPhysicalCorrection(true);
+}
+
 int main()
 {
+    automaticAccuracy();
     simpleSystems(false);
     simpleSystems(true);
     knownSystem(false, false);

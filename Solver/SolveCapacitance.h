@@ -101,6 +101,10 @@ protected:
 	// Both GMRES variants use the same Arnoldi and residual checks. The operator hooks
 	// also let small linear-system tests exercise the production implementation.
 	int GmresSolve(CLin_Vector *b, CLin_Vector *x, double gmresTol, bool flexible, CLin_Vector *x0 = NULL);
+	void ConductorCharge(CAutoConductor *conductor, unsigned long first,
+		const CLin_Vector &charge, double value[2], double *absoluteSum = NULL);
+	virtual double GmresCorrectionRatio(const CLin_Vector &correction, const CLin_Vector &charge);
+	int GmresSolveAutomatic(CLin_Vector *b, CLin_Vector *x, double gmresTol, bool flexible);
 	int GmresSolution(CLin_Vector *x, long iterations, bool flexible);
 	int GmresResidual(CLin_Vector *b, CLin_Vector *x, double &normr);
 	virtual int MultiplyGmresMatrix(CLin_Vector *result, CLin_Vector *x);

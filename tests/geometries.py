@@ -227,6 +227,25 @@ def permittivity_text(value):
     return "%g%sj%g" % (value.real, "-" if value.imag < 0 else "+", abs(value.imag))
 
 
+def nested_dielectric_cubes_geometry(permittivity):
+    """Planar nested cubes: the closed outer conductor shields the inner one."""
+    def write(directory):
+        lines = []
+        er = permittivity_text(permittivity)
+        for name, side, offset in [("inner", 1.0, (.15,-.1,.05)),
+                                   ("coat", 2.0, (0,0,0)), ("outer", 3.0, (0,0,0))]:
+            panels = [(kind, label, [tuple(v[k]-side/2+offset[k] for k in range(3))
+                                    for v in vertices])
+                      for kind, label, vertices in cube_panels(name, side)]
+            _write_panels(os.path.join(directory, name+".txt"), name, panels)
+            lines.append("D coat.txt 1 %s 0 0 0 0 0 0 -" % er if name == "coat"
+                         else "C %s.txt %s 0 0 0" % (name, er if name == "inner" else "1"))
+        path = os.path.join(directory, "cubes.lst")
+        _write_list(path, lines)
+        return path
+    return Geometry(write, 2, {}, [])
+
+
 def coated_spheres_geometry(permittivity, coat_radius=2.0, depth=3, split_coat=False,
                             offset=(0.0, 0.0, 0.0)):
     """Nested conductors with a coat; offset moves the inner conductor and its coat."""
