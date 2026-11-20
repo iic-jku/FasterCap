@@ -1,0 +1,6 @@
+if(FASTFIELDSOLVERS_HEADLESS)
+    add_executable(test_collocation_flux test_collocation_flux.cpp)
+    target_link_libraries(test_collocation_flux FasterCapSolver)
+    add_test(NAME collocation_flux COMMAND test_collocation_flux)
+    set_tests_properties(collocation_flux PROPERTIES TIMEOUT 10)
+endif()

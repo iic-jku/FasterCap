@@ -213,6 +213,13 @@ public:
 
 
 protected:
+	inline bool UsesDielectricField(CAutoElement *element) const
+	{
+		return g_ucSolverType == SOLVERGLOBAL_3DSOLVER &&
+			m_clsGlobalVars.m_cScheme == AUTOREFINE_COLLOCATION &&
+			(element->m_ucType & AUTOPANEL_IS_DIEL);
+	}
+
     typedef std::pair<fpos_t, long > StlPosLinenumPair;
     typedef std::map<std::string, StlPosLinenumPair, less<std::string> > StlFilePosMap;
 
