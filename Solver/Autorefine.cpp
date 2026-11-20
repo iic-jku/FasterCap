@@ -185,6 +185,7 @@ CAutoRefine::CAutoRefine()
 	m_ulUniquePotChunkIDs = NULL;
 	m_pucDielIndex = NULL;
 	m_pNodes = NULL;
+	m_ulNumofpotest = 0;
 	m_ulBlocksNum = 0;
 	m_ucInteractionLevel = AUTOREFINE_HIER_PRE_0_LEVEL;
 
@@ -466,7 +467,6 @@ int CAutoRefine::AutoRefineLinks(CAutoRefGlobalVars globalVars)
 	StlAutoCondDeque::iterator itc1, itc2;
 	double start, finish;
 	unsigned long j, k, totChunksNum;
-	// 'i' must have signed integral type due to MS OpenMP limitation (does not accept unsigned)
 	long i;
 	wxLongLong mem_Potest, mem_pCharge, mem_LinksTotal, mem_AvailVirtual, mem_MaxAllocVirtual, mem_AllocVirtual;
 	wxLongLong freeDiskBytes;
@@ -778,52 +778,8 @@ int CAutoRefine::AutoRefineLinks(CAutoRefGlobalVars globalVars)
 			}
 		}
 
-		// now calculate coefficients of potential
-
-        // 'm_ulLinkChunkNum' is the number of chunks per block
-        const unsigned long linkChunkNum = m_ulLinkChunkNum[m_ucInteractionLevel];
-        const unsigned long chunkAdjustmentShift = linkChunkNum * m_ulCurrBlock;
-
-		#pragma omp parallel for
-		for(i=nodeIndex; i<(long)nodeBlockEnd; i++) {
-			unsigned long localLinkIndex, localChunk, localPosInChunk;
-			CAutoElement *element2;
-			double potestim1;
-
-            CAutoElement *node = m_pNodes[i];
-            
-			// perform summation
-			for(localLinkIndex = node->m_ulLinkIndexStart[m_ucInteractionLevel]; localLinkIndex < node->m_ulLinkIndexEnd[m_ucInteractionLevel]; localLinkIndex++) {
-
-				// some of the links could be outside the boundary of the chunk, either on the left
-				// (but not for the first node) or on the right. In this case, skip
-				if(localLinkIndex >= linkIndex) {
-					localChunk = localLinkIndex / AUTOREFINE_LINK_CHUNK_SIZE;
-					// adjust chunk to position within the current block
-					localChunk -= chunkAdjustmentShift;
-					// if still within the boundary
-					if(localChunk < linkChunkNum) {
-                        localPosInChunk = localLinkIndex % AUTOREFINE_LINK_CHUNK_SIZE;
-						// interacting panels have already been identified
-						element2 = m_pdPanelPtrLinks[m_ucInteractionLevel][localChunk][localPosInChunk];
-						// calculate coefficient of potential
-						// Grouped dielectric targets store the radial field factor.
-						// Project onto each leaf normal only after downward propagation.
-						if(UsesDielectricField(node) && !node->IsLeaf()) {
-							C3DVector target = ((CAutoPanel*)node)->GetCentroid();
-							C3DVector source = ((CAutoPanel*)element2)->GetCentroid();
-							double distance = Mod(target - source);
-							potestim1 = 1.0 / (FOUR_PI_TIMES_E0 * distance * distance * distance);
-						}
-						else {
-							PotEstimateOpt(node, element2, potestim1);
-						}
-						// and store it
-						m_dPotCoeffLinks[m_ucInteractionLevel][localChunk][localPosInChunk] = potestim1;
-					}
-				}
-			}
-		}
+		ret = ComputeLinkCoefficients(nodeIndex, nodeBlockEnd, linkIndex);
+		if(ret != FC_NORMAL_END) return ret;
 		// and move to next nodeIndex position
 		nodeIndex = nodeBlockEnd - 1;
 
@@ -839,11 +795,102 @@ int CAutoRefine::AutoRefineLinks(CAutoRefGlobalVars globalVars)
 
 	}
 
+	// Each directed link was evaluated once, including across out-of-core blocks.
+	// Workers suppress diagnostics, so the statistic has one writer.
+	m_ulNumofpotest += m_ulLinksNum[m_ucInteractionLevel];
+
 	// check time
 	finish = omp_get_wtime();
 	m_fDurationRefine = (float)(finish - start);
 
 	return ret;
+}
+
+// Evaluate one loaded block. Workers never write shared diagnostics or counters.
+int CAutoRefine::ComputeLinkCoefficients(unsigned long nodeIndex, unsigned long nodeBlockEnd, unsigned long linkIndex)
+{
+	// 'm_ulLinkChunkNum' is the number of chunks per block
+	const unsigned long linkChunkNum = m_ulLinkChunkNum[m_ucInteractionLevel];
+	const unsigned long chunkAdjustmentShift = linkChunkNum * m_ulCurrBlock;
+
+	// Record errors only on the cold path; report them after the workers finish.
+	unsigned long invalidLink = ~0UL;
+	CAutoElement *invalidNode = NULL, *invalidTarget = NULL;
+	unsigned long nearLink = ~0UL;
+	CAutoElement *nearNode = NULL, *nearTarget = NULL;
+
+	// OpenMP on MSVC requires a signed loop index.
+	long i;
+	#pragma omp parallel for
+	for(i=nodeIndex; i<(long)nodeBlockEnd; i++) {
+		unsigned long localLinkIndex, localChunk, localPosInChunk;
+		CAutoElement *element2;
+		double potestim1;
+
+		CAutoElement *node = m_pNodes[i];
+
+		// Compute each directed coefficient once in this block.
+		for(localLinkIndex = node->m_ulLinkIndexStart[m_ucInteractionLevel]; localLinkIndex < node->m_ulLinkIndexEnd[m_ucInteractionLevel]; localLinkIndex++) {
+
+			// some of the links could be outside the boundary of the chunk, either on the left
+			// (but not for the first node) or on the right. In this case, skip
+			if(localLinkIndex >= linkIndex) {
+				localChunk = localLinkIndex / AUTOREFINE_LINK_CHUNK_SIZE;
+				// adjust chunk to position within the current block
+				localChunk -= chunkAdjustmentShift;
+				// if still within the boundary
+				if(localChunk < linkChunkNum) {
+					localPosInChunk = localLinkIndex % AUTOREFINE_LINK_CHUNK_SIZE;
+					// interacting panels have already been identified
+					element2 = m_pdPanelPtrLinks[m_ucInteractionLevel][localChunk][localPosInChunk];
+					bool nearDistance = false;
+					int potstatus = AUTOREFINE_NO_ERROR;
+					// calculate coefficient of potential
+					// Grouped dielectric targets store the radial field factor.
+					// Project onto each leaf normal only after downward propagation.
+					if(UsesDielectricField(node) && !node->IsLeaf()) {
+						C3DVector target = ((CAutoPanel*)node)->GetCentroid();
+						C3DVector source = ((CAutoPanel*)element2)->GetCentroid();
+						double distance = Mod(target - source);
+						potestim1 = 1.0 / (FOUR_PI_TIMES_E0 * distance * distance * distance);
+						if(!isfinite(potestim1)) potstatus = AUTOREFINE_ERROR_NAN_OR_INF;
+					}
+					else {
+						potstatus = PotEstimateOpt(node, element2, potestim1, false, &nearDistance);
+					}
+					if(potstatus == AUTOREFINE_NO_ERROR) {
+						m_dPotCoeffLinks[m_ucInteractionLevel][localChunk][localPosInChunk] = potestim1;
+					}
+					if(potstatus != AUTOREFINE_NO_ERROR || nearDistance) {
+						#pragma omp critical(FasterCapPotentialError)
+						{
+							if(potstatus != AUTOREFINE_NO_ERROR && localLinkIndex < invalidLink) {
+								invalidLink = localLinkIndex;
+								invalidNode = node;
+								invalidTarget = element2;
+							}
+							if(nearDistance && localLinkIndex < nearLink) {
+								nearLink = localLinkIndex;
+								nearNode = node;
+								nearTarget = element2;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if(invalidNode != NULL) {
+		// Do not repeat a failing numerical calculation or publish its coefficient.
+		ErrMsg("Error: mutual-potential calculation failed at directed link %lu\n", invalidLink);
+		if(m_clsGlobalVars.m_bVerboseOutput) {
+			invalidNode->ErrorPrintCoords();
+			invalidTarget->ErrorPrintCoords();
+		}
+		return FC_INVALID_RESULT;
+	}
+	if(nearNode != NULL) WarnNearPanels(nearNode, nearTarget);
+	return FC_NORMAL_END;
 }
 
 // can save both links and coefficients of potential, or only links
@@ -3316,24 +3363,45 @@ int CAutoRefine::RefineMutual(CAutoSegment *panel1, CAutoSegment *panel2)
 	return FC_NORMAL_END;
 }
 
+// Shared serial warning for finite near-distance estimates, including those found
+// by parallel workers. This has no effect on the potential-estimate statistic.
+void CAutoRefine::WarnNearPanels(CAutoElement *element1, CAutoElement *element2)
+{
+	ErrMsg("Warning: panel distance too small found during potential calculation\n");
+	ErrMsg("         Possible causes are thin panels or, more probably, overlapping panels.\n");
+	if(m_clsGlobalVars.m_bVerboseOutput == true) {
+		double distance;
+		const char *kind;
+		if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER) {
+			distance = Mod(((CAutoPanel*)element1)->GetCentroid() - ((CAutoPanel*)element2)->GetCentroid());
+			kind = "panel";
+		}
+		else {
+			distance = Mod(((CAutoSegment*)element1)->GetCentroid() - ((CAutoSegment*)element2)->GetCentroid());
+			kind = "segment";
+		}
+		ErrMsg("Warning: %s distance %f too small between %ss %p and %p.\n", kind, distance, kind, (void*)element1, (void*)element2);
+		element1->ErrorPrintCoords();
+		element2->ErrorPrintCoords();
+	}
+}
+
 // Potential estimate of element2 on element1
-int CAutoRefine::PotEstimateOpt(CAutoElement *element1, CAutoElement *element2, double &potestim1)
+int CAutoRefine::PotEstimateOpt(CAutoElement *element1, CAutoElement *element2, double &potestim1, bool diagnostics, bool *nearDistance)
 {
 	int ret;
+	if(nearDistance != NULL) *nearDistance = false;
 
 	if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER) {
-		ret = PotEstimateOpt((CAutoPanel*)element1, (CAutoPanel*)element2, potestim1);
+		ret = PotEstimateOpt((CAutoPanel*)element1, (CAutoPanel*)element2, potestim1, AUTOREFINE_PRECOND_NONE, diagnostics, nearDistance);
 	}
 	else if(g_ucSolverType == SOLVERGLOBAL_2DSOLVER) {
-		ret = PotEstimateOpt((CAutoSegment*)element1, (CAutoSegment*)element2, potestim1);
+		ret = PotEstimateOpt((CAutoSegment*)element1, (CAutoSegment*)element2, potestim1, AUTOREFINE_PRECOND_NONE, diagnostics, nearDistance);
 	}
 	else {
 		ASSERT(false);
 		ret = FC_GENERIC_ERROR;
 	}
-
-	_ASSERT(!isnan(potestim1));
-	_ASSERT(isfinite(potestim1));
 
 	return ret;
 }
@@ -3341,7 +3409,7 @@ int CAutoRefine::PotEstimateOpt(CAutoElement *element1, CAutoElement *element2, 
 
 // Potential estimate between two triangular panels
 // 'computePrecond' == true will accept also near super-panels
-int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &potestim1, unsigned char computePrecond)
+int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &potestim1, unsigned char computePrecond, bool diagnostics, bool *nearDistance)
 {
 	C3DVector panel1center, panel2center, dist, normal1, normal2;
 	C3DVector normal1l, normal1r, normal2l, normal2r;
@@ -3355,12 +3423,15 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 
 	// if auto potential, this is an error
 	if(panel1 == panel2) {
-		ErrMsg("Internal Error: Trying to calculate auto capacitance with mutual capacitance routine PotEstimateOpt() on panel %x\n", panel1);
+		if(diagnostics) {
+			ErrMsg("Internal Error: Trying to calculate auto capacitance with mutual capacitance routine PotEstimateOpt() on panel %p\n", (void*)panel1);
+		}
 		return AUTOREFINE_ERROR_AUTOCAP;
 	}
 
 	dist = panel1->GetCentroid() - panel2->GetCentroid();
 	rdist = Mod(dist);
+	if(nearDistance != NULL) *nearDistance = rdist < AUTOPANEL_EPS;
 
 	// get max length of panel side
 	r1 = panel1->GetMaxSideLen();
@@ -3378,7 +3449,7 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 	// - thin panels or overlapping ones
 	// - super panels (in case of preconditioner calculation, where refinement is prevented below
 	//   a certain level)
-	if(rdist < AUTOPANEL_EPS) {
+	if(diagnostics && rdist < AUTOPANEL_EPS) {
 		if(computePrecond == AUTOREFINE_PRECOND_SUPER) {
 			if(m_clsGlobalVars.m_bWarnGivenPre == false) {
 				// signal we already warned the user
@@ -3402,14 +3473,7 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 #endif
 		}
 		else {
-			ErrMsg("Warning: panel distance too small found during potential calculation\n");
-			ErrMsg("         Possible causes are thin panels or, more probably, overlapping panels.\n");
-
-			if(m_clsGlobalVars.m_bVerboseOutput == true) {
-				ErrMsg("Warning: panel distance %f too small between panel %lx and %lx.\n", rdist, panel1, panel2);
-				panel1->ErrorPrintCoords();
-				panel2->ErrorPrintCoords();
-			}
+			WarnNearPanels(panel1, panel2);
 		}
 	}
 
@@ -3565,40 +3629,41 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 	}
 
 	// keep track of number of potential estimations
-	m_ulNumofpotest += 1;
-
-	_ASSERT(!isnan(potestim1));
-	_ASSERT(isfinite(potestim1));
+	if(diagnostics) {
+		m_ulNumofpotest += 1;
+	}
 
 	if(isnan(potestim1) || !isfinite(potestim1) ) {
-		if(m_clsGlobalVars.m_bWarnGivenNaN == false) {
-			// signal we already warned the user
-			m_clsGlobalVars.m_bWarnGivenNaN = true;
-			ErrMsg("Error: mutual-potential calculation failed.\n");
-			ErrMsg("       Remark: the precision of the result is affected.\n");
-		}
-		if(m_clsGlobalVars.m_bVerboseOutput == true) {
-			if(!isfinite(potestim1) ) {
-				ErrMsg("Error: mutual-potential calculation gave infinite value\n");
+		if(diagnostics) {
+			if(m_clsGlobalVars.m_bWarnGivenNaN == false) {
+				// signal we already warned the user
+				m_clsGlobalVars.m_bWarnGivenNaN = true;
+				ErrMsg("Error: mutual-potential calculation failed.\n");
+				ErrMsg("       Remark: the precision of the result is affected.\n");
 			}
-			else {
-				ErrMsg("Error: mutual-potential calculation gave 'not a number' value (NaN)\n");
-			}
-			ErrMsg("       panel 1 data\n");
-			panel1->ErrorPrintCoords();
-			if(panel1->IsLeaf() == true) {
-				ErrMsg("       panel is leaf\n");
-			}
-			else {
-				ErrMsg("       panel is not leaf\n");
-			}
-			ErrMsg("       panel 2 data\n");
-			panel2->ErrorPrintCoords();
-			if(panel2->IsLeaf() == true) {
-				ErrMsg("       panel is leaf\n");
-			}
-			else {
-				ErrMsg("       panel is not leaf\n");
+			if(m_clsGlobalVars.m_bVerboseOutput == true) {
+				if(!isfinite(potestim1) ) {
+					ErrMsg("Error: mutual-potential calculation gave infinite value\n");
+				}
+				else {
+					ErrMsg("Error: mutual-potential calculation gave 'not a number' value (NaN)\n");
+				}
+				ErrMsg("       panel 1 data\n");
+				panel1->ErrorPrintCoords();
+				if(panel1->IsLeaf() == true) {
+					ErrMsg("       panel is leaf\n");
+				}
+				else {
+					ErrMsg("       panel is not leaf\n");
+				}
+				ErrMsg("       panel 2 data\n");
+				panel2->ErrorPrintCoords();
+				if(panel2->IsLeaf() == true) {
+					ErrMsg("       panel is leaf\n");
+				}
+				else {
+					ErrMsg("       panel is not leaf\n");
+				}
 			}
 		}
 		return AUTOREFINE_ERROR_NAN_OR_INF;
@@ -3623,7 +3688,7 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 
 	// if auto potential, this is an error
 	if(panel1 == panel2) {
-		ErrMsg("Internal Error: Trying to calculate auto capacitance with mutual capacitance routine PotEstimateOpt() on panel %x\n", panel1);
+		ErrMsg("Internal Error: Trying to calculate auto capacitance with mutual capacitance routine PotEstimateOpt() on panel %p\n", (void*)panel1);
 		return AUTOREFINE_ERROR_AUTOCAP;
 	}
 
@@ -4033,7 +4098,7 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 
 // Potential estimate between two linear segments
 // 'computePrecond' == true will accept also near super-panels
-int CAutoRefine::PotEstimateOpt(CAutoSegment *panel1, CAutoSegment *panel2, double &potestim1, unsigned char computePrecond)
+int CAutoRefine::PotEstimateOpt(CAutoSegment *panel1, CAutoSegment *panel2, double &potestim1, unsigned char computePrecond, bool diagnostics, bool *nearDistance)
 {
 	C2DVector panel1center, panel2center, dist, normal1;
 	C2DVector normal1l, normal1r, normal2l, normal2r;
@@ -4046,12 +4111,15 @@ int CAutoRefine::PotEstimateOpt(CAutoSegment *panel1, CAutoSegment *panel2, doub
 
 	// if auto potential, this is an error
 	if(panel1 == panel2) {
-		ErrMsg("Internal Error: Trying to calculate auto capacitance with mutual capacitance routine PotEstimateOpt() on segment %x\n", panel1);
+		if(diagnostics) {
+			ErrMsg("Internal Error: Trying to calculate auto capacitance with mutual capacitance routine PotEstimateOpt() on segment %p\n", (void*)panel1);
+		}
 		return AUTOREFINE_ERROR_AUTOCAP;
 	}
 
 	dist = panel1->GetCentroid() - panel2->GetCentroid();
 	rdist = Mod(dist);
+	if(nearDistance != NULL) *nearDistance = rdist < AUTOPANEL_EPS;
 
 	// get length of segments
 	r1 = panel1->GetLength();
@@ -4069,7 +4137,7 @@ int CAutoRefine::PotEstimateOpt(CAutoSegment *panel1, CAutoSegment *panel2, doub
 	// - thin panels or overlapping ones
 	// - super panels (in case of preconditioner calculation, where refinement is prevented below
 	//   a certain level)
-	if(rdist < AUTOPANEL_EPS) {
+	if(diagnostics && rdist < AUTOPANEL_EPS) {
 		if(computePrecond == AUTOREFINE_PRECOND_SUPER) {
 			if(m_clsGlobalVars.m_bWarnGivenPre == false) {
 				// signal we already warned the user
@@ -4093,14 +4161,7 @@ int CAutoRefine::PotEstimateOpt(CAutoSegment *panel1, CAutoSegment *panel2, doub
 #endif
 		}
 		else {
-			ErrMsg("Warning: panel distance too small found during potential calculation\n");
-			ErrMsg("         Possible causes are thin panels or, more probably, overlapping panels.\n");
-
-			if(m_clsGlobalVars.m_bVerboseOutput == true) {
-				ErrMsg("Warning: segment distance %f too small between segments %lx and %lx.\n", rdist, panel1, panel2);
-				panel1->ErrorPrintCoords();
-				panel2->ErrorPrintCoords();
-			}
+			WarnNearPanels(panel1, panel2);
 		}
 	}
 
@@ -4162,40 +4223,41 @@ int CAutoRefine::PotEstimateOpt(CAutoSegment *panel1, CAutoSegment *panel2, doub
 	}
 
 	// keep track of number of potential estimations
-	m_ulNumofpotest += 1;
-
-	_ASSERT(!isnan(potestim1));
-	_ASSERT(isfinite(potestim1));
+	if(diagnostics) {
+		m_ulNumofpotest += 1;
+	}
 
 	if(isnan(potestim1) || !isfinite(potestim1) ) {
-		if(m_clsGlobalVars.m_bWarnGivenNaN == false) {
-			// signal we already warned the user
-			m_clsGlobalVars.m_bWarnGivenNaN = true;
-			ErrMsg("Error: mutual-potential calculation failed.\n");
-			ErrMsg("       Remark: the precision of the result is affected.\n");
-		}
-		if(m_clsGlobalVars.m_bVerboseOutput == true) {
-			if(!isfinite(potestim1) ) {
-				ErrMsg("Error: mutual-potential calculation gave infinite value\n");
+		if(diagnostics) {
+			if(m_clsGlobalVars.m_bWarnGivenNaN == false) {
+				// signal we already warned the user
+				m_clsGlobalVars.m_bWarnGivenNaN = true;
+				ErrMsg("Error: mutual-potential calculation failed.\n");
+				ErrMsg("       Remark: the precision of the result is affected.\n");
 			}
-			else {
-				ErrMsg("Error: mutual-potential calculation gave 'not a number' value (NaN)\n");
-			}
-			ErrMsg("       segment 1 data\n");
-			panel1->ErrorPrintCoords();
-			if(panel1->IsLeaf() == true) {
-				ErrMsg("       segment is leaf\n");
-			}
-			else {
-				ErrMsg("       segment is not leaf\n");
-			}
-			ErrMsg("       segment 2 data\n");
-			panel2->ErrorPrintCoords();
-			if(panel2->IsLeaf() == true) {
-				ErrMsg("       segment is leaf\n");
-			}
-			else {
-				ErrMsg("       segment is not leaf\n");
+			if(m_clsGlobalVars.m_bVerboseOutput == true) {
+				if(!isfinite(potestim1) ) {
+					ErrMsg("Error: mutual-potential calculation gave infinite value\n");
+				}
+				else {
+					ErrMsg("Error: mutual-potential calculation gave 'not a number' value (NaN)\n");
+				}
+				ErrMsg("       segment 1 data\n");
+				panel1->ErrorPrintCoords();
+				if(panel1->IsLeaf() == true) {
+					ErrMsg("       segment is leaf\n");
+				}
+				else {
+					ErrMsg("       segment is not leaf\n");
+				}
+				ErrMsg("       segment 2 data\n");
+				panel2->ErrorPrintCoords();
+				if(panel2->IsLeaf() == true) {
+					ErrMsg("       segment is leaf\n");
+				}
+				else {
+					ErrMsg("       segment is not leaf\n");
+				}
 			}
 		}
 		return AUTOREFINE_ERROR_NAN_OR_INF;
@@ -4219,7 +4281,7 @@ int CAutoRefine::PotEstimateOpt(CAutoSegment *panel1, CAutoSegment *panel2, doub
 
 	// if auto potential, this is an error
 	if(panel1 == panel2) {
-		ErrMsg("Internal Error: Trying to calculate auto capacitance with mutual capacitance routine PotEstimateOpt() on segment %x\n", panel1);
+		ErrMsg("Internal Error: Trying to calculate auto capacitance with mutual capacitance routine PotEstimateOpt() on segment %p\n", (void*)panel1);
 		return AUTOREFINE_ERROR_AUTOCAP;
 	}
 

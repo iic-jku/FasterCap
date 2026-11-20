@@ -350,6 +350,16 @@ def write_two_cubes_named(directory):
     return path
 
 
+def write_near_triangles(directory):
+    """Two finite, unequal panels closer than AUTOPANEL_EPS in parallel planes."""
+    panels = [("T", "c", [(-1, -1, 0), (1, -1, 0), (0, 2, 0)]),
+              ("T", "c", [(-2, -1, 1e-13), (2, -1, 1e-13), (0, 2, 1e-13)])]
+    _write_panels(os.path.join(directory, "near.txt"), "near parallel triangles", panels)
+    path = os.path.join(directory, "near_triangles.lst")
+    _write_list(path, ["C near.txt 1.0 0 0 0"])
+    return path
+
+
 def write_degenerate_triangle(directory):
     """The cube and, beside it, a triangle whose vertices are on a line: no self-potential."""
     panels = cube_panels("c", SIDE) + [("T", "c", [(2, 0, 0), (3, 0, 0), (4, 0, 0)])]
@@ -429,6 +439,7 @@ COATED_COAX_C = 2.0 * math.pi * EPS0 / (math.log(COAX_COAT_RADIUS / RADIUS) / CO
 
 
 GEOMETRIES = {
+    "near_triangles": Geometry(write_near_triangles, 1, {}, []),
     "layered_spheres_flux": layered_spheres_geometry([10.0, 3.0, 1.0], [1.6, 2.3], depth=2),
     "coated_spheres_flux_uneven": coated_spheres_geometry(100.0, depth=2,
                                                           split_coat=True, split_half=True),
