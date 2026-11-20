@@ -32,6 +32,8 @@
 
 #include <string>
 #include <iostream>
+#include <cctype>
+#include <cstdlib>
 #include <time.h>
 // for _isnan() and _finite()
 #include <float.h>
@@ -4735,6 +4737,106 @@ static bool JoinConductorName(char (&destination)[AUTOCONDUCTOR_MAX_NAME_LEN],
 	return true;
 }
 
+// C and D records share their required fields in both dimensional formats.
+struct CMaterialRecord
+{
+	char m_sName[AUTOCONDUCTOR_MAX_NAME_LEN];
+	float m_fOutperm[2], m_fInperm[2], m_fOffset[3], m_fReference[3];
+	bool m_bComplex, m_bModifier;
+};
+
+static const char *SkipMaterialSpace(const char *point)
+{
+	while(isspace(static_cast<unsigned char>(*point))) point++;
+	return point;
+}
+
+static bool ReadMaterialFloat(const char *&point, float &value)
+{
+	char *end;
+	const float parsed = strtof(point, &end);
+	if(end == point || !isfinite(parsed)) return false;
+	point = end;
+	value = parsed;
+	return true;
+}
+
+static bool MaterialFieldEnd(const char *point)
+{
+	return *point == '\0' || isspace(static_cast<unsigned char>(*point));
+}
+
+static bool ReadMaterialPermittivity(const char *&point, float permittivity[2], bool &complex)
+{
+	if(!ReadMaterialFloat(point, permittivity[0])) return false;
+	permittivity[1] = 0.0f;
+
+	// A signed next coordinate is not a complex suffix unless followed by j.
+	const char *suffix = SkipMaterialSpace(point);
+	if(*suffix == '-' || *suffix == '+') {
+		const char *imaginary = SkipMaterialSpace(suffix + 1);
+		if(*imaginary == 'j') {
+			imaginary++;
+			if(!ReadMaterialFloat(imaginary, permittivity[1])) return false;
+			if(*suffix == '-') permittivity[1] = -permittivity[1];
+			point = imaginary;
+			complex = true;
+		}
+	}
+	return MaterialFieldEnd(point);
+}
+
+static bool ParseMaterialRecord(const char *line, int dimensions, CMaterialRecord &record,
+                                const char *filename, long linenum)
+{
+	const char *point = SkipMaterialSpace(line + 1);
+	const char *name = point;
+	while(*point != '\0' && !isspace(static_cast<unsigned char>(*point))) point++;
+	const size_t length = point - name;
+	const char *field = "file name";
+	bool valid = length > 0 && length < sizeof(record.m_sName);
+	if(valid) {
+		memcpy(record.m_sName, name, length);
+		record.m_sName[length] = '\0';
+		record.m_bComplex = false;
+		field = "outer permittivity";
+		valid = ReadMaterialPermittivity(point, record.m_fOutperm, record.m_bComplex);
+	}
+	if(valid && line[0] == 'D') {
+		field = "inner permittivity";
+		valid = ReadMaterialPermittivity(point, record.m_fInperm, record.m_bComplex);
+	}
+	const int groups = line[0] == 'D' ? 2 : 1;
+	const char modifier = line[0] == 'C' ? '+' : '-';
+	for(int group = 0; valid && group < groups; group++) {
+		field = group == 0 ? "translation coordinates" : "dielectric reference coordinates";
+		float *coordinates = group == 0 ? record.m_fOffset : record.m_fReference;
+		for(int coordinate = 0; valid && coordinate < dimensions; coordinate++) {
+			valid = ReadMaterialFloat(point, coordinates[coordinate]);
+			// scanf also accepted a marker attached to the final coordinate.
+			const bool finalCoordinate = group == groups - 1 && coordinate == dimensions - 1;
+			valid = valid && (MaterialFieldEnd(point) || (finalCoordinate && *point == modifier));
+		}
+	}
+	if(!valid) {
+		ErrMsg("Error: missing or invalid %s in '%c' definition at line %ld of input file \"%s\"\n",
+		       field, line[0], linenum, filename);
+		return false;
+	}
+
+	// Retain the optional marker and ignored trailing text of existing C/D records.
+	point = SkipMaterialSpace(point);
+	record.m_bModifier = *point == modifier;
+	if(line[0] == 'D' && record.m_bModifier) {
+		for(int component = 0; component < 2; component++) {
+			const float temporary = record.m_fOutperm[component];
+			record.m_fOutperm[component] = record.m_fInperm[component];
+			record.m_fInperm[component] = temporary;
+		}
+	}
+	return true;
+}
+
 int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosMap *parentFilePosMap, CAutoRefGlobalVars *globalVars, bool isdiel, C3DVector offset, double outpermRe, double outpermIm,
                                   const char *groupname, double inpermRe, double inpermIm, C3DVector dielrefpoint)
 {
@@ -4744,7 +4846,8 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 	char line[AUTOREFINE_MAX_LINE_LEN], *point;
 	char name[AUTOCONDUCTOR_MAX_NAME_LEN], tmpname[AUTOCONDUCTOR_MAX_NAME_LEN], newname[AUTOCONDUCTOR_MAX_NAME_LEN];
 	char condname[AUTOCONDUCTOR_MAX_NAME_LEN], localGroupname[AUTOCONDUCTOR_MAX_NAME_LEN];
-	float x, y, z, localOutperm[2], localInperm[2], tmpperm;
+	float x, y, z;
+	CMaterialRecord material;
 	StlAutoCondDeque::iterator itc, itc_old;
 	C3DVector localOffset, localDielrefpoint;
 	double mod, dist, dir, diag1, diag2, dsides[4], cosangle;
@@ -4827,45 +4930,22 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 			break;
 		}
 
+		if(line[0] == 'C' || line[0] == 'D') {
+			if(!ParseMaterialRecord(line, 3, material, fileinname, linenum)) {
+				ret = FC_FILE_ERROR;
+				break;
+			}
+			if(material.m_bComplex) globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
+			localOffset.pos(material.m_fOffset[0], material.m_fOffset[1], material.m_fOffset[2]);
+			localOffset += offset;
+			if(line[0] == 'D') {
+				localDielrefpoint.pos(material.m_fReference[0], material.m_fReference[1], material.m_fReference[2]);
+				localDielrefpoint += offset;
+			}
+		}
+
 		// if conductor file
 		if(line[0] == 'C') {
-
-			// read file name
-			point = line+1;
-			sscanf(point, "%s%n", name, &skip);
-			point += skip;
-
-			// read outer permittivity
-
-			sscanf(point, "%f%n", &localOutperm[0], &skip);
-			point += skip;
-			// check if it is a complex value
-			status = sscanf(point, " - j %f%n", &localOutperm[1], &skip);
-			if(status == 1) {
-				// must add the sign
-				localOutperm[1] = -localOutperm[1];
-				// signal that we have at least one complex permittivity value; must solve as complex
-				globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
-				point += skip;
-			}
-			else {
-				status = sscanf(point, " + j %f%n", &localOutperm[1], &skip);
-				if(status == 1) {
-					globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
-					point += skip;
-				}
-				else {
-					// local permittivity imaginary part is zero,
-					// in case are permittivities are real and not complex values
-					localOutperm[1] = 0.0;
-				}
-			}
-
-			// read offset coordinates
-			sscanf(point, "%f%f%f%n", &x, &y, &z, &skip);
-			localOffset.pos(x, y, z);
-			localOffset += offset;
-			point += skip;
 
 			// compute group name (to distinguish between panels with the same
 			// conductor name because in the same file called more than once)
@@ -4876,14 +4956,10 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 				break;
 			}
 
-			// read optional '+'
-			tmpname[0] = '\0';
-			sscanf(point, "%s%n", tmpname, &skip);
-			point += skip;
 			// if '+', do not increase group name
 			// in this way, panels with the same conductor name in different files
 			// will belong to the same conductor
-			if(tmpname[0] != '+') {
+			if(!material.m_bModifier) {
 				// increase group name
 				m_iGroupNum[m_iParseLevel]++;
 			}
@@ -4891,7 +4967,7 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 			// recurse into new conductor file
 			m_iGroupNum[m_iParseLevel+1] = 1;
 
-			ret = Parse3DInputFile(name, fid, filePosMapPtr, globalVars, false, localOffset, localOutperm[0], localOutperm[1], localGroupname);
+			ret = Parse3DInputFile(material.m_sName, fid, filePosMapPtr, globalVars, false, localOffset, material.m_fOutperm[0], material.m_fOutperm[1], localGroupname);
 
 			// if any error in Parse3DInputFile() (e.g. out of memory, user break, etc.)
 			if(ret != FC_NORMAL_END) {
@@ -4902,98 +4978,18 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 		// if dielectric file
 		else if(line[0] == 'D') {
 
-			// read file name
-			point = line+1;
-			sscanf(point, "%s%n", name, &skip);
-			point += skip;
-
-			// read outer permittivity
-			sscanf(point, "%f%n", &localOutperm[0], &skip);
-			point += skip;
-			// check if it is a complex value
-			status = sscanf(point, " - j %f%n", &localOutperm[1], &skip);
-			if(status == 1) {
-				// must add the sign
-				localOutperm[1] = -localOutperm[1];
-				globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
-				point += skip;
-			}
-			else {
-				status = sscanf(point, " + j %f%n", &localOutperm[1], &skip);
-				if(status == 1) {
-					globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
-					point += skip;
-				}
-				else {
-					// local permittivity imaginary part is zero,
-					// in case are permittivities are real and not complex values
-					localOutperm[1] = 0.0;
-				}
-			}
-
-			// read inner permittivity
-			sscanf(point, "%f%n", &localInperm[0], &skip);
-			point += skip;
-			// check if it is a complex value
-			status = sscanf(point, " - j %f%n", &localInperm[1], &skip);
-			if(status == 1) {
-				// must add the sign
-				localInperm[1] = -localInperm[1];
-				globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
-				point += skip;
-			}
-			else {
-				status = sscanf(point, " + j %f%n", &localInperm[1], &skip);
-				if(status == 1) {
-					globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
-					point += skip;
-				}
-				else {
-					// local permittivity imaginary part is zero,
-					// in case are permittivities are real and not complex values
-					localInperm[1] = 0.0;
-				}
-			}
-
-			// read offset coordinates
-			sscanf(point, "%f%f%f%n", &x, &y, &z, &skip);
-			localOffset.pos(x, y, z);
-			localOffset += offset;
-			point += skip;
-
-			// read dielectric reference point coordinates
-			sscanf(point, "%f%f%f%n", &x, &y, &z, &skip);
-			localDielrefpoint.pos(x, y, z);
-			localDielrefpoint += offset;
-			point += skip;
-
-			// read optional '-'
-			tmpname[0] = '\0';
-			sscanf(point, "%s%n", tmpname, &skip);
-			point += skip;
-			// if '-', reverse outperm and inperm;
-			// in this way, the reference point is always on the outperm side
-			if(tmpname[0] == '-') {
-				tmpperm = localOutperm[0];
-				localOutperm[0] = localInperm[0];
-				localInperm[0] = tmpperm;
-				tmpperm = localOutperm[1];
-				localOutperm[1] = localInperm[1];
-				localInperm[1] = tmpperm;
-			}
-
 			dummyDiel = false;
-			if(localInperm[0]<= 0.0 || localOutperm[0]<=0.0) {
+			if(material.m_fInperm[0]<= 0.0 || material.m_fOutperm[0]<=0.0) {
 				dummyDiel = true;
 			}
 			if(globalVars->m_ucHasCmplxPerm == AUTOREFINE_CPLX_PERM) {
-				if(fabs(localInperm[0] - localOutperm[0])/localInperm[0] < AUTOREFINE_REL_DIEL_TOL &&
-				        fabs(localInperm[1] - localOutperm[1])/localInperm[1] < AUTOREFINE_REL_DIEL_TOL) {
+				if(fabs(material.m_fInperm[0] - material.m_fOutperm[0])/material.m_fInperm[0] < AUTOREFINE_REL_DIEL_TOL &&
+				        fabs(material.m_fInperm[1] - material.m_fOutperm[1])/material.m_fInperm[1] < AUTOREFINE_REL_DIEL_TOL) {
 					dummyDiel = true;
 				}
 			}
 			else {
-				if(fabs(localInperm[0] - localOutperm[0])/localInperm[0] < AUTOREFINE_REL_DIEL_TOL) {
+				if(fabs(material.m_fInperm[0] - material.m_fOutperm[0])/material.m_fInperm[0] < AUTOREFINE_REL_DIEL_TOL) {
 					dummyDiel = true;
 				}
 			}
@@ -5002,7 +4998,7 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 				ErrMsg("Warning: dummy dielectric-dielectric interface found in the input file, skipping\n");
 				if(globalVars->m_bVerboseOutput == true) {
 					ErrMsg("         Dummy interface defined at line %d of the input file \"%s\"\n", linenum, fileinname);
-					ErrMsg("         Dielectric constants are: inperm %f-j%f, outperm %f-j%f; differing less than %f%%\n", localInperm[0], localInperm[1], localOutperm[0], localOutperm[1], AUTOREFINE_REL_DIEL_TOL * 100.0f);
+					ErrMsg("         Dielectric constants are: inperm %f-j%f, outperm %f-j%f; differing less than %f%%\n", material.m_fInperm[0], material.m_fInperm[1], material.m_fOutperm[0], material.m_fOutperm[1], AUTOREFINE_REL_DIEL_TOL * 100.0f);
 				}
 			}
 			else {
@@ -5013,8 +5009,8 @@ int CAutoRefine::Parse3DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 				m_lGroupDielNum++;
 
 				// recurse into new dielectric file
-				ret = Parse3DInputFile(name, fid, filePosMapPtr, globalVars, true, localOffset,  localOutperm[0], localOutperm[1],
-				                       localGroupname, localInperm[0], localInperm[1], localDielrefpoint);
+				ret = Parse3DInputFile(material.m_sName, fid, filePosMapPtr, globalVars, true, localOffset,  material.m_fOutperm[0], material.m_fOutperm[1],
+				                       localGroupname, material.m_fInperm[0], material.m_fInperm[1], localDielrefpoint);
 
 				// if any error in Parse3DInputFile() (e.g. out of memory, user break, etc.)
 				if(ret != FC_NORMAL_END) {
@@ -5579,7 +5575,8 @@ int CAutoRefine::Parse2DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 	char line[AUTOREFINE_MAX_LINE_LEN], *point;
 	char name[AUTOCONDUCTOR_MAX_NAME_LEN], tmpname[AUTOCONDUCTOR_MAX_NAME_LEN], newname[AUTOCONDUCTOR_MAX_NAME_LEN];
 	char condname[AUTOCONDUCTOR_MAX_NAME_LEN], localGroupname[AUTOCONDUCTOR_MAX_NAME_LEN];
-	float x, y, localOutperm[2], localInperm[2], tmpperm;
+	float x, y;
+	CMaterialRecord material;
 	StlAutoCondDeque::iterator itc, itc_old;
 	C2DVector localOffset;
 	C3DVector localDielrefpoint;
@@ -5650,45 +5647,23 @@ int CAutoRefine::Parse2DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 			break;
 		}
 
+		if(line[0] == 'C' || line[0] == 'D') {
+			if(!ParseMaterialRecord(line, 2, material, fileinname, linenum)) {
+				ret = FC_FILE_ERROR;
+				break;
+			}
+			if(material.m_bComplex) globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
+			localOffset.pos(material.m_fOffset[0], material.m_fOffset[1]);
+			localOffset += offset;
+			if(line[0] == 'D') {
+				localDielrefpoint.pos(material.m_fReference[0], material.m_fReference[1], 0.0);
+				localDielrefpoint.x += offset.x;
+				localDielrefpoint.y += offset.y;
+			}
+		}
+
 		// if conductor file
 		if(line[0] == 'C') {
-
-			// read file name
-			point = line+1;
-			sscanf(point, "%s%n", name, &skip);
-			point += skip;
-
-			// read outer permittivity
-
-			sscanf(point, "%f%n", &localOutperm[0], &skip);
-			point += skip;
-			// check if it is a complex value
-			status = sscanf(point, " - j %f%n", &localOutperm[1], &skip);
-			if(status == 1) {
-				// must add the sign
-				localOutperm[1] = -localOutperm[1];
-				// signal that we have at least one complex permittivity value; must solve as complex
-				globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
-				point += skip;
-			}
-			else {
-				status = sscanf(point, " + j %f%n", &localOutperm[1], &skip);
-				if(status == 1) {
-					globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
-					point += skip;
-				}
-				else {
-					// local permittivity imaginary part is zero,
-					// in case are permittivities are real and not complex values
-					localOutperm[1] = 0.0;
-				}
-			}
-
-			// read offset coordinates
-			sscanf(point, "%f%f%n", &x, &y, &skip);
-			localOffset.pos(x, y);
-			localOffset += offset;
-			point += skip;
 
 			// compute group name (to distinguish between panels with the same
 			// conductor name because in the same file called more than once)
@@ -5699,21 +5674,17 @@ int CAutoRefine::Parse2DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 				break;
 			}
 
-			// read optional '+'
-			tmpname[0] = '\0';
-			sscanf(point, "%s%n", tmpname, &skip);
-			point += skip;
 			// if '+', do not increase group name
 			// in this way, panels with the same conductor name in different files
 			// will belong to the same conductor
-			if(tmpname[0] != '+') {
+			if(!material.m_bModifier) {
 				// increase group name
 				m_iGroupNum[m_iParseLevel]++;
 			}
 
 			// recurse into new conductor file
 			m_iGroupNum[m_iParseLevel+1] = 1;
-			ret = Parse2DInputFile(name, fid, filePosMapPtr, globalVars, false, localOffset, localOutperm[0], localOutperm[1], localGroupname);
+			ret = Parse2DInputFile(material.m_sName, fid, filePosMapPtr, globalVars, false, localOffset, material.m_fOutperm[0], material.m_fOutperm[1], localGroupname);
 
 			// if any error in Parse3DInputFile() (e.g. out of memory, user break, etc.)
 			if(ret != FC_NORMAL_END) {
@@ -5724,101 +5695,18 @@ int CAutoRefine::Parse2DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 		// if dielectric file
 		else if(line[0] == 'D') {
 
-			// read file name
-			point = line+1;
-			sscanf(point, "%s%n", name, &skip);
-			point += skip;
-
-			// read outer permittivity
-			sscanf(point, "%f%n", &localOutperm[0], &skip);
-			point += skip;
-			// check if it is a complex value
-			status = sscanf(point, " - j %f%n", &localOutperm[1], &skip);
-			if(status == 1) {
-				// must add the sign
-				localOutperm[1] = -localOutperm[1];
-				globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
-				point += skip;
-			}
-			else {
-				status = sscanf(point, " + j %f%n", &localOutperm[1], &skip);
-				if(status == 1) {
-					globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
-					point += skip;
-				}
-				else {
-					// local permittivity imaginary part is zero,
-					// in case are permittivities are real and not complex values
-					localOutperm[1] = 0.0;
-				}
-			}
-
-			// read inner permittivity
-			sscanf(point, "%f%n", &localInperm[0], &skip);
-			point += skip;
-			// check if it is a complex value
-			status = sscanf(point, " - j %f%n", &localInperm[1], &skip);
-			if(status == 1) {
-				// must add the sign
-				localInperm[1] = -localInperm[1];
-				globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
-				point += skip;
-			}
-			else {
-				status = sscanf(point, " + j %f%n", &localInperm[1], &skip);
-				if(status == 1) {
-					globalVars->m_ucHasCmplxPerm = AUTOREFINE_CPLX_PERM;
-					point += skip;
-				}
-				else {
-					// local permittivity imaginary part is zero,
-					// in case are permittivities are real and not complex values
-					localInperm[1] = 0.0;
-				}
-			}
-
-			// read offset coordinates
-			sscanf(point, "%f%f%n", &x, &y, &skip);
-			localOffset.pos(x, y);
-			localOffset += offset;
-			point += skip;
-
-			// read dielectric reference point coordinates
-			sscanf(point, "%f%f%n", &x, &y, &skip);
-			// to have a single def of conductor, we used the 'trick' to store
-			// the diel ref point as 2D inside a 3D point, ignoring 'z'
-			localDielrefpoint.pos(x, y, 0.0);
-			localDielrefpoint.x += offset.x;
-			localDielrefpoint.y += offset.y;
-			point += skip;
-
-			// read optional '-'
-			tmpname[0] = '\0';
-			sscanf(point, "%s%n", tmpname, &skip);
-			point += skip;
-			// if '-', reverse outperm and inperm;
-			// in this way, the reference point is always on the outperm side
-			if(tmpname[0] == '-') {
-				tmpperm = localOutperm[0];
-				localOutperm[0] = localInperm[0];
-				localInperm[0] = tmpperm;
-				tmpperm = localOutperm[1];
-				localOutperm[1] = localInperm[1];
-				localInperm[1] = tmpperm;
-			}
-
 			dummyDiel = false;
-			if(localInperm[0]<= 0.0 || localOutperm[0]<=0.0) {
+			if(material.m_fInperm[0]<= 0.0 || material.m_fOutperm[0]<=0.0) {
 				dummyDiel = true;
 			}
 			if(globalVars->m_ucHasCmplxPerm == AUTOREFINE_CPLX_PERM) {
-				if(fabs(localInperm[0] - localOutperm[0])/localInperm[0] < AUTOREFINE_REL_DIEL_TOL &&
-				        fabs(localInperm[1] - localOutperm[1])/localInperm[1] < AUTOREFINE_REL_DIEL_TOL) {
+				if(fabs(material.m_fInperm[0] - material.m_fOutperm[0])/material.m_fInperm[0] < AUTOREFINE_REL_DIEL_TOL &&
+				        fabs(material.m_fInperm[1] - material.m_fOutperm[1])/material.m_fInperm[1] < AUTOREFINE_REL_DIEL_TOL) {
 					dummyDiel = true;
 				}
 			}
 			else {
-				if(fabs(localInperm[0] - localOutperm[0])/localInperm[0] < AUTOREFINE_REL_DIEL_TOL) {
+				if(fabs(material.m_fInperm[0] - material.m_fOutperm[0])/material.m_fInperm[0] < AUTOREFINE_REL_DIEL_TOL) {
 					dummyDiel = true;
 				}
 			}
@@ -5827,7 +5715,7 @@ int CAutoRefine::Parse2DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 				ErrMsg("Warning: dummy dielectric-dielectric interface found in the input file, skipping\n");
 				if(globalVars->m_bVerboseOutput == true) {
 					ErrMsg("         Dummy interface defined at line %d of the input file \"%s\"\n", linenum, fileinname);
-					ErrMsg("         Dielectric constants are: inperm %f-j%f, outperm %f-j%f; differing less than %f%%\n", localInperm[0], localInperm[1], localOutperm[0], localOutperm[1], AUTOREFINE_REL_DIEL_TOL * 100.0f);
+					ErrMsg("         Dielectric constants are: inperm %f-j%f, outperm %f-j%f; differing less than %f%%\n", material.m_fInperm[0], material.m_fInperm[1], material.m_fOutperm[0], material.m_fOutperm[1], AUTOREFINE_REL_DIEL_TOL * 100.0f);
 				}
 			}
 			else {
@@ -5838,8 +5726,8 @@ int CAutoRefine::Parse2DInputFile(char *fileinname, FILE *parentFid, StlFilePosM
 				m_lGroupDielNum++;
 
 				// recurse into new dielectric file
-				ret = Parse2DInputFile(name, fid, filePosMapPtr, globalVars, true, localOffset,  localOutperm[0], localOutperm[1],
-				                       localGroupname, localInperm[0], localInperm[1], localDielrefpoint);
+				ret = Parse2DInputFile(material.m_sName, fid, filePosMapPtr, globalVars, true, localOffset,  material.m_fOutperm[0], material.m_fOutperm[1],
+				                       localGroupname, material.m_fInperm[0], material.m_fInperm[1], localDielrefpoint);
 
 				// if any error in Parse3DInputFile() (e.g. out of memory, user break, etc.)
 				if(ret != FC_NORMAL_END) {
