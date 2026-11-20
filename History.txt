@@ -17,7 +17,8 @@ Version 6.4.0, 2026/11/20
 - Reject incomplete or nonfinite conductor and dielectric list records with `FC_FILE_ERROR` (exit 74)
 - Preserve the numerical JSON schema and raw matrix ordering without symmetrizing matrices
 - Mark `dev-latest` as a prerelease so development builds do not replace stable release discovery
-- Physical automatic stopping (#78), broader cross-platform variation (#10) and the historical triangulation assertion (#7) remain open
+- Add controlled cross-platform comparisons of full-precision matrices and matched-setting replays (#10)
+- Automatic stopping does not bound physical mesh and hierarchy error (#78); the historical triangulation assertion (#7) remains unresolved
 
 Version 6.3.0, 2026/11/19
 - Optional `--report=<path>` writes full-precision real/complex matrices, solver status, quality diagnostics and build provenance as JSON
