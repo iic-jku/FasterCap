@@ -37,6 +37,7 @@
 #include <cmath>
 
 #include "SolveCapacitance.h"
+#include "OrderedDot.h"
 
 // link with FasterCap main frame
 #include "../FasterCapGlobal.h"
@@ -2379,7 +2380,7 @@ int CSolveCap::GmresSolve(CLin_Vector *b, CLin_Vector *x, double gmresTol, bool 
 		// Modified Gram-Schmidt uses each updated remainder. A second pass after
 		// substantial cancellation restores orthogonality near a dependent vector.
 		for(long j=0; j<=i; j++) {
-			m_pclsGmres_h[i][j] = dot_prod(m_pclsGmres_q[j], m_clsGmres_v);
+			m_pclsGmres_h[i][j] = OrderedDotProduct(m_pclsGmres_q[j].array(), m_clsGmres_v.array(), size);
 			for(long k=0; k<size; k++) {
 				m_clsGmres_v[k] -= m_pclsGmres_h[i][j] * m_pclsGmres_q[j][k];
 			}
@@ -2387,7 +2388,7 @@ int CSolveCap::GmresSolve(CLin_Vector *b, CLin_Vector *x, double gmresTol, bool 
 		double next = GmresNorm(m_clsGmres_v);
 		if(next < 0.5 * before) {
 			for(long j=0; j<=i; j++) {
-				double correction = dot_prod(m_pclsGmres_q[j], m_clsGmres_v);
+				double correction = OrderedDotProduct(m_pclsGmres_q[j].array(), m_clsGmres_v.array(), size);
 				m_pclsGmres_h[i][j] += correction;
 				for(long k=0; k<size; k++) {
 					m_clsGmres_v[k] -= correction * m_pclsGmres_q[j][k];
