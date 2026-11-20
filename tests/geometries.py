@@ -62,6 +62,61 @@ def cube_panels(name, side):
     return [("Q", name, face) for face in faces]
 
 
+def write_plate_over_substrate(directory, triangulated=False):
+    """Original #10/#23 plate fixture, including its historical Q face ordering.
+
+    Coordinates are the original micrometer numbers, interpreted by FasterCap as
+    meters. Divide reported capacitances by 1e6 for the physical farad values.
+    This reproducer has no analytic reference; do not substitute the cube helper's
+    corrected outward face orientation when comparing historical platform results.
+    With triangulated=True, split each planar face into strips of aspect at most
+    ten, then explicit triangles. This preserves the physical surfaces but uses
+    a deliberately different mesh, independent of the solver's Q preprocessing.
+    """
+    def box(name, lower, upper):
+        def v(x, y, z):
+            return tuple(lo + (hi - lo) * t for lo, hi, t in zip(lower, upper, (x, y, z)))
+        faces = [
+            [v(0, 0, 0), v(1, 0, 0), v(1, 1, 0), v(0, 1, 0)],
+            [v(0, 0, 1), v(1, 0, 1), v(1, 1, 1), v(0, 1, 1)],
+            [v(0, 0, 0), v(1, 0, 0), v(1, 0, 1), v(0, 0, 1)],
+            [v(0, 1, 0), v(1, 1, 0), v(1, 1, 1), v(0, 1, 1)],
+            [v(0, 0, 0), v(0, 1, 0), v(0, 1, 1), v(0, 0, 1)],
+            [v(1, 0, 0), v(1, 1, 0), v(1, 1, 1), v(1, 0, 1)],
+        ]
+        return [("Q", name, face) for face in faces]
+
+    for filename, title, name, lower, upper in (
+        ("substrate.txt", "substrate", "substrate", (-9, -9, -0.43), (109, 109, -0.1)),
+        ("plate.txt", "plate", "plate", (0, 0, 0.936), (100, 100, 1.036)),
+        ("oxide.txt", "field oxide", "oxide", (-9, -9, 0), (109, 109, 0.326)),
+    ):
+        panels = box(name, lower, upper)
+        if triangulated:
+            triangles = []
+            for _, _, vertices in panels:
+                def length(a, b):
+                    return math.sqrt(sum((x-y)**2 for x, y in zip(a, b)))
+                if length(vertices[0], vertices[1]) < length(vertices[1], vertices[2]):
+                    vertices = vertices[1:] + vertices[:1]
+                count = max(1, math.ceil(length(vertices[0], vertices[1]) /
+                                        (10 * length(vertices[1], vertices[2]))))
+                def point(a, b, index):
+                    return tuple(x + (y-x) * index / count for x, y in zip(a, b))
+                for i in range(count):
+                    a = point(vertices[0], vertices[1], i)
+                    b = point(vertices[0], vertices[1], i+1)
+                    c = point(vertices[3], vertices[2], i+1)
+                    d = point(vertices[3], vertices[2], i)
+                    triangles.extend([("T", name, [a, b, c]), ("T", name, [a, c, d])])
+            panels = triangles
+        _write_panels(os.path.join(directory, filename), title, panels)
+    path = os.path.join(directory, "plate_over_substrate.lst")
+    _write_list(path, ["C substrate.txt 3.9 0 0 0", "C plate.txt 3.9 0 0 0",
+                       "D oxide.txt 3.9 4.632 0 0 0 50 50 0.163 -"])
+    return path
+
+
 def icosphere_panels(name, radius, depth):
     """Triangles of an icosahedron subdivided `depth` times, vertices on the sphere."""
     t = (1.0 + math.sqrt(5.0)) / 2.0
