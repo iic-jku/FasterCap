@@ -63,7 +63,18 @@ the displacement ratio from one half to one quarter reduces their leading size b
 a factor of eight and keeps the expansion away from its convergence boundary.
 This is a geometric convergence margin, not a bound on the conditioned capacitance
 error. Failed checks descend the existing hierarchy; physical leaf pairs keep their
-direct kernel. Conductor-only, Galerkin and 2D link selection is unchanged.
+direct kernel. Galerkin and 2D link selection is unchanged.
+
+Conductor collocation exchanges the integration and sampling roles: it integrates
+the physical source triangle and samples the target centroid. Conductor-conductor
+pairs therefore require the same quarter-distance bound in both directions, including
+conductor pairs within models containing dielectrics. Bounds are also computed for
+conductor-only models, so separated patches cannot be accepted
+near a target merely because their synthetic group triangle has a small area.
+This changes conductor link counts, memory, runtime and numerical results. The
+conductor representation still uses total group charge and a constant group potential;
+the geometric check does not supply missing higher-order moments or an error guarantee.
+Mixed conductor/dielectric pairs retain their existing dielectric bound.
 
 The bounded regressions cover uniform fields, exact integration of a known harmonic
 quadratic, far-field convergence with neutral and nonneutral sources, repeated

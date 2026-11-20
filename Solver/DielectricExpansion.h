@@ -27,6 +27,8 @@ inline unsigned int Index(int a, int b, int c)
 
 // Bounds use the physical descendants, not a superpanel's synthetic triangle.
 // Qualocation source leaves are centroid points; target leaves are triangles.
+// Conductor collocation exchanges those roles: physical source triangles
+// interact with target centroid points, using the same bounds.
 class CDielectricExpansionBounds
 {
 public:
