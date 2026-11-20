@@ -36,6 +36,7 @@
 #include "omp.h"
 
 #include <cmath>
+#include <algorithm>
 
 #include "MultiplyHierarchical.h"
 
@@ -246,6 +247,7 @@ int CMultHier::ComputePanelPotentials_2fast()
 
         // LoadLinks() has changed 'm_ulCurrBlock'
         const unsigned long chunkAdjustmentShift = linkChunkNum * m_ulCurrBlock;
+        const unsigned long blockEnd = linkIndex + std::min(linksPerBlock, linksNum - linkIndex);
 
         // scan the nodes whose links are in the current block (of course they must be ordered)
         // but first we need to find where to stop (to avoid scanning all nodes every time)
@@ -253,64 +255,51 @@ int CMultHier::ComputePanelPotentials_2fast()
         // normally or due to the break)
         for(nodeBlockEnd=nodeIndex; nodeBlockEnd < nodeNumPre0; nodeBlockEnd++) {
             // if going into next chunk, we stop here
-            if(m_pNodes[nodeBlockEnd]->m_ulLinkIndexEnd[m_ucInteractionLevel] >= linkIndex+linksPerBlock) {
+            if(m_pNodes[nodeBlockEnd]->m_ulLinkIndexEnd[m_ucInteractionLevel] >= blockEnd) {
                 nodeBlockEnd++;
                 break;
             }
         }
 
-        // now calculate potentials based on charges, performing multiplication and accumulation
-
-#pragma omp parallel for
+        // Trees are contiguous in the node array; dielectric targets do more work.
+        // Spread fixed groups of targets while retaining each target's link order.
+#pragma omp parallel for schedule(static, 64)
         for(i=nodeIndex; i<(long)nodeBlockEnd; i++) {
-            unsigned long localLinkIndex, localChunk, localPosInChunk;
-            // perform summation
             CAutoElement *node = m_pNodes[i];
+            const unsigned long first = std::max(linkIndex, node->m_ulLinkIndexStart[m_ucInteractionLevel]);
+            const unsigned long last = std::min(blockEnd, node->m_ulLinkIndexEnd[m_ucInteractionLevel]);
+            if(first >= last) continue;
             const bool dielectricTarget = UsesDielectricField(node);
             const bool fieldExpansion = dielectricTarget && !node->IsLeaf();
-            unsigned long linkIndexEnd = node->m_ulLinkIndexEnd[m_ucInteractionLevel];
-            for(localLinkIndex = node->m_ulLinkIndexStart[m_ucInteractionLevel];
-                localLinkIndex < linkIndexEnd;
-                localLinkIndex++) {
-                // some of the links could be outside the boundary of the chunk, either on the left
-                // (but not for the first node) or on the right. In this case, skip
-                if(localLinkIndex >= linkIndex) {
-                    localChunk = localLinkIndex / AUTOREFINE_LINK_CHUNK_SIZE;
-                    // adjust chunk to position within the current block
-                    localChunk -= chunkAdjustmentShift;
-                    // if still within the boundary
-                    if(localChunk < linkChunkNum) {
-                        localPosInChunk = localLinkIndex % AUTOREFINE_LINK_CHUNK_SIZE;
-                        // node potentials have already been zeroed in ComputePanelCharges_fast()
-                        CAutoElement *source = localPanelPtrLinks[localChunk][localPosInChunk];
-                        double contribution = source->m_dCharge * localPotCoeffLinks[localChunk][localPosInChunk];
-                        if(fieldExpansion) {
-                            CAutoPanel *targetPanel = (CAutoPanel*)node;
-                            C3DVector targetCenter = targetPanel->GetCentroid();
-                            C3DVector sourceCenter = ((CAutoPanel*)source)->GetCentroid();
-                            targetPanel->m_clsFieldExpansion.AddSource(source->m_dCharge,
-                                ((CAutoPanel*)source)->m_clsChargeMoments, targetCenter - sourceCenter,
-                                localPotCoeffLinks[localChunk][localPosInChunk], true, !source->IsLeaf());
-                        }
-                        else {
-                            node->m_dPotential += contribution;
-                            if(dielectricTarget && !source->IsLeaf()) {
-                                CAutoPanel *targetPanel = (CAutoPanel*)node;
-                                CAutoPanel *sourcePanel = (CAutoPanel*)source;
-                                C3DVector r = C3DVector(targetPanel->GetCentroid()) - C3DVector(sourcePanel->GetCentroid());
-                                double distance = Mod(r);
-                                targetPanel->m_clsFieldExpansion.AddSource(source->m_dCharge,
-                                    sourcePanel->m_clsChargeMoments, r,
-                                    1.0 / (FOUR_PI_TIMES_E0 * distance * distance * distance), false);
-                            }
-                        }
-                        
-                        // this is a hotspot, only check this in debug mode…
-#ifndef NDEBUG
-                        ASSERT(fabs(node->m_dPotential) < 1E20);
-#endif
+            CAutoPanel *targetPanel = dielectricTarget ? (CAutoPanel*)node : NULL;
+            C3DVector targetCenter;
+            if(dielectricTarget) targetCenter = targetPanel->GetCentroid();
+            for(unsigned long localLinkIndex = first; localLinkIndex < last; localLinkIndex++) {
+                const unsigned long localChunk = localLinkIndex / AUTOREFINE_LINK_CHUNK_SIZE - chunkAdjustmentShift;
+                const unsigned long localPosInChunk = localLinkIndex % AUTOREFINE_LINK_CHUNK_SIZE;
+                CAutoElement *source = localPanelPtrLinks[localChunk][localPosInChunk];
+                const double coefficient = localPotCoeffLinks[localChunk][localPosInChunk];
+                if(fieldExpansion) {
+                    C3DVector sourceCenter = ((CAutoPanel*)source)->GetCentroid();
+                    targetPanel->m_clsFieldExpansion.AddSource(source->m_dCharge,
+                        ((CAutoPanel*)source)->m_clsChargeMoments, targetCenter - sourceCenter,
+                        coefficient, true, !source->IsLeaf());
+                }
+                else {
+                    node->m_dPotential += source->m_dCharge * coefficient;
+                    if(dielectricTarget && !source->IsLeaf()) {
+                        CAutoPanel *sourcePanel = (CAutoPanel*)source;
+                        C3DVector r = targetCenter - C3DVector(sourcePanel->GetCentroid());
+                        double distance = Mod(r);
+                        targetPanel->m_clsFieldExpansion.AddSource(source->m_dCharge,
+                            sourcePanel->m_clsChargeMoments, r,
+                            1.0 / (FOUR_PI_TIMES_E0 * distance * distance * distance), false);
                     }
                 }
+                // This is a hotspot; wxASSERT also evaluates in release builds.
+#ifndef NDEBUG
+                ASSERT(fabs(node->m_dPotential) < 1E20);
+#endif
             }
         }
         // and move to next nodeIndex position
