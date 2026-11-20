@@ -1,4 +1,4 @@
-"""Compare compressed dielectric solves with the same fixed mesh using direct links."""
+"""Compare compressed collocation solves with the same fixed mesh using direct links."""
 import argparse
 import json
 import os
@@ -42,6 +42,7 @@ def main():
     parser.add_argument("--workdir", type=Path, required=True)
     parser.add_argument("--high-contrast", action="store_true")
     parser.add_argument("--uneven", action="store_true")
+    parser.add_argument("--conductor", action="store_true")
     args = parser.parse_args()
     root = args.workdir.resolve()
     executable = str(Path(args.fastercap).resolve())
@@ -67,6 +68,10 @@ def main():
                      ("layered",geometries.layered_spheres_geometry([100,10,1],[1.6,2.3],depth=2),1280)]
             matrix_tolerance = 0.002
             distances = ("1e-36",)
+        if args.conductor:
+            cases = [("conductor", geometries.layered_spheres_geometry([1.0], [], depth=2), 640)]
+            matrix_tolerance = 0.002
+            distances = ("1e-34",)
         for name, geometry, panels in cases:
             reference, full_links = solve(executable, root / name / "direct", geometry, "1e-40", panels)
             assert full_links == panels * (panels-1)

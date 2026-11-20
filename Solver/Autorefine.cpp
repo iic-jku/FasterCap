@@ -440,7 +440,7 @@ int CAutoRefine::AutoRefinePanels(CAutoRefGlobalVars globalVars, unsigned char i
 		}
 	}
 
-	if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER && m_clsGlobalVars.m_cScheme == AUTOREFINE_COLLOCATION && m_lDielNum > 0) {
+	if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER && m_clsGlobalVars.m_cScheme == AUTOREFINE_COLLOCATION) {
 		for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); ++itc1)
 			(*itc1)->m_uTopElement.m_pTopPanel->CalcExpansionBounds();
 	}
@@ -3043,8 +3043,12 @@ int CAutoRefine::RefineMutual(CAutoPanel *panel1, CAutoPanel *panel2)
 		// use different criteria for conductor and dielectric
 		forcerefinement = RefineCriteria(&panel1crit, &panel2crit, panel1, panel2, &dist, rdist, rmax, m_clsGlobalVars.m_dEps);
 
-		if((UsesDielectricField(panel1) && !panel1->m_clsExpansionBounds.AcceptsSource(panel2->m_clsExpansionBounds,rdist)) ||
-			(UsesDielectricField(panel2) && !panel2->m_clsExpansionBounds.AcceptsSource(panel1->m_clsExpansionBounds,rdist))) {
+		// Conductor collocation integrates the source triangle and samples the target
+		// centroid: the same physical bounds apply with their roles reversed.
+		const bool conductorPair = m_clsGlobalVars.m_cScheme == AUTOREFINE_COLLOCATION &&
+			!(panel1->m_ucType & AUTOPANEL_IS_DIEL) && !(panel2->m_ucType & AUTOPANEL_IS_DIEL);
+		if(((UsesDielectricField(panel1) || conductorPair) && !panel1->m_clsExpansionBounds.AcceptsSource(panel2->m_clsExpansionBounds,rdist)) ||
+			((UsesDielectricField(panel2) || conductorPair) && !panel2->m_clsExpansionBounds.AcceptsSource(panel1->m_clsExpansionBounds,rdist))) {
 			forcerefinement = true;
 		}
 
