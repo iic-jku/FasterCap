@@ -66,31 +66,39 @@ public:
 		C3DVector r, double radial, bool expandTarget)
 	{
 		double invSquaredDistance = 1.0 / DotProd(r,r);
-		double gradient[3][3], hessian[3][3][3];
+		double dipoleDot = 0.0, secondDot = 0.0;
+		C3DVector secondTimesR(0,0,0);
 		for(int a=0; a<3; ++a) {
-			if(expandTarget) m_clsField[a] += radial * charge * r[a];
-			for(int b=0; b<3; ++b) {
-				gradient[a][b] = radial * ((a == b ? 1.0 : 0.0) -
-					3*r[a]*r[b]*invSquaredDistance);
-				m_clsField[a] -= gradient[a][b] * source.m_dDipole[b];
-				for(int c=0; c<3; ++c) {
-					hessian[a][b][c] = radial * (-3 * ((a == b ? r[c] : 0.0) +
-						(a == c ? r[b] : 0.0) + (b == c ? r[a] : 0.0))*invSquaredDistance +
-						15*r[a]*r[b]*r[c]*invSquaredDistance*invSquaredDistance);
-					m_clsField[a] += 0.5*hessian[a][b][c] *
-						source.m_dSecond[DielectricExpansion::Index(b,c)];
-				}
-			}
+			dipoleDot += r[a] * source.m_dDipole[a];
+			for(int b=0; b<3; ++b)
+				secondTimesR[a] += source.m_dSecond[DielectricExpansion::Index(a,b)] * r[b];
+			secondDot += r[a] * secondTimesR[a];
+		}
+		double trace = source.m_dSecond[0] + source.m_dSecond[3] + source.m_dSecond[5];
+		// Contract the symmetric moments directly instead of constructing all
+		// 9 gradient and 27 Hessian entries for every directed link.
+		double alongR = (3*dipoleDot - 1.5*trace + 7.5*secondDot*invSquaredDistance) * invSquaredDistance;
+		if(expandTarget) alongR += charge;
+		for(int a=0; a<3; ++a) {
+			m_clsField[a] += radial * (r[a]*alongR - source.m_dDipole[a] -
+				3*secondTimesR[a]*invSquaredDistance);
 		}
 		if(!expandTarget) return;
+		double identity = radial * (charge + 3*dipoleDot*invSquaredDistance);
+		double outer = -radial * (3*charge + 15*dipoleDot*invSquaredDistance) * invSquaredDistance;
+		double mixed = 3*radial*invSquaredDistance;
+		double hessianLinear = -3*radial*charge*invSquaredDistance;
+		double hessianCubic = 15*radial*charge*invSquaredDistance*invSquaredDistance;
 		for(int a=0; a<3; ++a) {
 			for(int b=a; b<3; ++b) {
 				unsigned int ab = DielectricExpansion::Index(a,b);
-				m_dGradient[ab] += charge * gradient[a][b];
-				for(int c=0; c<3; ++c)
-					m_dGradient[ab] -= hessian[a][b][c] * source.m_dDipole[c];
-				for(int c=b; c<3; ++c)
-					m_dHessian[DielectricExpansion::Index(a,b,c)] += charge * hessian[a][b][c];
+				m_dGradient[ab] += (a == b ? identity : 0.0) + outer*r[a]*r[b] +
+					mixed*(r[a]*source.m_dDipole[b] + r[b]*source.m_dDipole[a]);
+				for(int c=b; c<3; ++c) {
+					m_dHessian[DielectricExpansion::Index(a,b,c)] += hessianLinear *
+						((a == b ? r[c] : 0.0) + (a == c ? r[b] : 0.0) + (b == c ? r[a] : 0.0)) +
+						hessianCubic*r[a]*r[b]*r[c];
+				}
 			}
 		}
 	}
