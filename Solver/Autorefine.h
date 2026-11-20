@@ -128,10 +128,14 @@ public:
 	void SelfPotential(CAutoPanel *panel, double *potestRe, double *potestIm);
     void SelfPotential(CAutoSegment *panel, double *potestRe, double *potestIm);
 	int BuildSuperHierarchy();
-	int PotEstimateOpt(CAutoElement *element1, CAutoElement *element2, double &potestim1);
-	int PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &potestim1, unsigned char computePrecond = AUTOREFINE_PRECOND_NONE);
+	void WarnNearPanels(CAutoElement *element1, CAutoElement *element2);
+	// diagnostics=false leaves shared statistics and warning flags untouched; the caller
+	// counts completed estimates and reports returned errors after parallel work.
+	// nearDistance, when supplied, is caller-local storage for a deferred warning.
+	int PotEstimateOpt(CAutoElement *element1, CAutoElement *element2, double &potestim1, bool diagnostics = true, bool *nearDistance = NULL);
+	int PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &potestim1, unsigned char computePrecond = AUTOREFINE_PRECOND_NONE, bool diagnostics = true, bool *nearDistance = NULL);
 	int PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &potestim1, double &potestim2, unsigned char computePrecond = AUTOREFINE_PRECOND_NONE);
-    int PotEstimateOpt(CAutoSegment *panel1, CAutoSegment *panel2, double &potestim1, unsigned char computePrecond = AUTOREFINE_PRECOND_NONE);
+    int PotEstimateOpt(CAutoSegment *panel1, CAutoSegment *panel2, double &potestim1, unsigned char computePrecond = AUTOREFINE_PRECOND_NONE, bool diagnostics = true, bool *nearDistance = NULL);
     int PotEstimateOpt(CAutoSegment *panel1, CAutoSegment *panel2, double &potestim1, double &potestim2, unsigned char computePrecond = AUTOREFINE_PRECOND_NONE);
     void SetCurrentConductor(CAutoConductor *m_pCurrCond);
 	inline void SetInteractionLevel(unsigned char interactionLevel)
@@ -213,6 +217,7 @@ public:
 
 
 protected:
+	int ComputeLinkCoefficients(unsigned long nodeIndex, unsigned long nodeBlockEnd, unsigned long linkIndex);
 	inline bool UsesDielectricField(CAutoElement *element) const
 	{
 		return g_ucSolverType == SOLVERGLOBAL_3DSOLVER &&
