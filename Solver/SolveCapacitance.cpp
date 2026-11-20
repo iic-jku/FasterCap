@@ -43,6 +43,8 @@
 
 // max number of automatic iterations, after which we declare convergence failed
 #define SOLVE_MAX_AUTO_ITERATIONS  128
+// Bound algebraic correction work without rebuilding links or Krylov storage.
+#define SOLVE_MAX_AUTO_CORRECTIONS 8
 // minimum increment factor in terms of # of panels / links for each iteration of the 'auto' option
 #define SOLVE_AUTO_INCREMENT_FACTOR 1.1
 // this is 2 / SIN(60), used to get square of equilateral triangle side, given the area
@@ -1046,6 +1048,8 @@ int CSolveCap::SolveForCapacitance(CLin_Matrix *cRe, CLin_Matrix *cIm)
 		}
 	}
 
+	if(ret == FC_NORMAL_END && m_clsGlobalVars.m_bAuto && !m_bGmresConverged)
+		return FC_CONVERGENCE_FAILED;
 	return ret;
 }
 
@@ -1131,9 +1135,9 @@ int CSolveCap::Solve(CLin_Matrix *cRe, CLin_Matrix *cIm, bool &matrixComplete)
 {
 	matrixComplete = false;
 	StlAutoCondDeque::iterator itc1, itc2;
-	unsigned long i, j, potindex, chindex, caprow, capcol, panelnum, potVectorDim;
+	unsigned long i, potindex, chindex, caprow, capcol, panelnum, potVectorDim;
 	long firstCondElemIndex, rowNum;
-	double capacitance[2], outpermRe, outpermIm, chargeRe, chargeIm;
+	double capacitance[2];
 	double start, finish;
 	int ret;
 
@@ -1289,52 +1293,7 @@ int CSolveCap::Solve(CLin_Matrix *cRe, CLin_Matrix *cIm, bool &matrixComplete)
 				// sum up only if current conductor is real conductor and not dielectric
 				if( (*itc2)->m_bIsDiel == false) {
 
-					capacitance[0] = 0.0;
-					capacitance[1] = 0.0;
-
-					// sum this conductor's charges
-					//
-					// note that charge for this conductor is multiplied by outperm;
-					// this is to consider the medium surrounding the conductor,
-					// for detailed explanation, see Keith Nabors's PhD Thesis,
-					// "Efficient three-dimensional capacitance calculation", p.76
-					// as well as "The electrostatic field of conductive bodies in
-					// multiple dielectric media", Rao & Sarkar; another good reference is
-					// C. Wei, R. F. Harrington, J. R. Mautz, T. K. Sarkar
-					// "Multiconductor transmission lines in multilayered dielectric media", IEEE Transactions on Microwave
-					// Theory and Techniques, Vol. 32, No. 4, Apr 1985
-					for(j=chindex; j < chindex + (*itc2)->m_ulLeafPanelNum; j++) {
-
-						if( m_clsGlobalVars.m_ucHasCmplxPerm == AUTOREFINE_REAL_PERM ) {
-							_ASSERT(!isnan(charge[j]));
-							_ASSERT(isfinite(charge[j]));
-							// get the outer permittivity for this panel
-							outpermRe = (*itc2)->m_dSurfOutperm[m_clsMulthier.m_pucDielIndex[j]][0];
-							// and adjust the charge
-							capacitance[0] += outpermRe*charge[j];
-						}
-						else {
-							// real part
-							_ASSERT(!isnan(charge[j]));
-							_ASSERT(isfinite(charge[j]));
-							// imaginary part
-							_ASSERT(!isnan(charge[j+panelnum]));
-							_ASSERT(isfinite(charge[j+panelnum]));
-							// get the complex outer permittivity for this panel
-							outpermRe = (*itc2)->m_dSurfOutperm[m_clsMulthier.m_pucDielIndex[j]][0];
-							outpermIm = (*itc2)->m_dSurfOutperm[m_clsMulthier.m_pucDielIndex[j]][1];
-
-							// and adjust the charge
-							// remark: a*b where a and b are complex is (aRe+j*aIm)*(bRe+j*bIm) = aRe*bRe-aIm*bIm +j*(aIm*bRe+aRe*bIm)
-							chargeRe = charge[j];
-							chargeIm = charge[j+panelnum];
-							capacitance[0] += outpermRe*chargeRe - outpermIm*chargeIm;
-							capacitance[1] += outpermIm*chargeRe + outpermRe*chargeIm;
-//debug
-//LogMsg("outpemRe %g, outpermIm %g, chargeRe %g, chargeIm %g; c[0] %g, c[1] %g\n", outpermRe, outpermIm, chargeRe, chargeIm, capacitance[0], capacitance[1]);
-						}
-
-					}
+					ConductorCharge(*itc2, chindex, charge, capacitance);
 					// store capacitance value in matrix
 					(*cRe)[caprow][capcol] = capacitance[0];
 					(*cIm)[caprow][capcol] = capacitance[1];
@@ -2150,6 +2109,56 @@ static double GmresNorm(const CLin_Vector &vector)
 	return scale * sqrt(sum);
 }
 
+// Convert unknown panel charges to free conductor charge using each panel's
+// surrounding permittivity (Nabors, Efficient three-dimensional capacitance
+// calculation, p.76). The optional absolute sum bounds a correction's effect
+// even when its positive and negative panel contributions cancel.
+void CSolveCap::ConductorCharge(CAutoConductor *conductor, unsigned long first,
+	const CLin_Vector &charge, double value[2], double *absoluteSum)
+{
+	value[0] = value[1] = 0.0;
+	if(absoluteSum != NULL) *absoluteSum = 0.0;
+	const unsigned long panelnum = m_clsMulthier.GetPanelNum(AUTOREFINE_HIER_PRE_0_LEVEL);
+	for(unsigned long j=first; j<first+conductor->m_ulLeafPanelNum; ++j) {
+		double outpermRe = conductor->m_dSurfOutperm[m_clsMulthier.m_pucDielIndex[j]][0];
+		// Keep the original accumulation expressions, including compiler FMA
+		// contraction, so manual solves retain their arithmetic order.
+		if(m_clsGlobalVars.m_ucHasCmplxPerm == AUTOREFINE_REAL_PERM) {
+			value[0] += outpermRe * charge[j];
+			if(absoluteSum != NULL) *absoluteSum += fabs(outpermRe * charge[j]);
+		}
+		else {
+			double outpermIm = conductor->m_dSurfOutperm[m_clsMulthier.m_pucDielIndex[j]][1];
+			value[0] += outpermRe * charge[j] - outpermIm * charge[j+panelnum];
+			value[1] += outpermIm * charge[j] + outpermRe * charge[j+panelnum];
+			if(absoluteSum != NULL) *absoluteSum += std::hypot(
+				outpermRe * charge[j] - outpermIm * charge[j+panelnum],
+				outpermIm * charge[j] + outpermRe * charge[j+panelnum]);
+		}
+	}
+}
+
+double CSolveCap::GmresCorrectionRatio(const CLin_Vector &correction, const CLin_Vector &charge)
+{
+	double capacitanceNorm = 0.0, correctionBound = 0.0;
+	unsigned long first = 0;
+	for(StlAutoCondDeque::iterator conductor = m_clsMulthier.m_stlConductors.begin();
+		conductor != m_clsMulthier.m_stlConductors.end(); ++conductor) {
+		if(!(*conductor)->m_bIsDiel) {
+			double capacitance[2], delta[2], absoluteSum;
+			ConductorCharge(*conductor, first, charge, capacitance);
+			ConductorCharge(*conductor, first, correction, delta, &absoluteSum);
+			capacitanceNorm = std::hypot(capacitanceNorm, std::hypot(capacitance[0], capacitance[1]));
+			correctionBound = std::hypot(correctionBound, absoluteSum);
+		}
+		first += (*conductor)->m_ulLeafPanelNum;
+	}
+	const double chargeNorm = GmresNorm(charge), deltaNorm = GmresNorm(correction);
+	double relativeCharge = deltaNorm == 0.0 ? 0.0 : deltaNorm / chargeNorm;
+	double relativeCapacitance = correctionBound == 0.0 ? 0.0 : correctionBound / capacitanceNorm;
+	return std::fmax(relativeCharge, relativeCapacitance);
+}
+
 int CSolveCap::MultiplyGmresMatrix(CLin_Vector *result, CLin_Vector *x)
 {
 	return m_clsMulthier.MultiplyMatByVec_fast(result, x);
@@ -2216,12 +2225,48 @@ int CSolveCap::GmresSolution(CLin_Vector *x, long iterations, bool flexible)
 
 int CSolveCap::gmresPrecondSFastAll(CLin_Vector *b, CLin_Vector *x, double gmresTol)
 {
-	return GmresSolve(b, x, gmresTol, false);
+	return m_clsGlobalVars.m_bAuto ? GmresSolveAutomatic(b, x, gmresTol, false) :
+		GmresSolve(b, x, gmresTol, false);
 }
 
 int CSolveCap::gmresFlexPrecondSFastAll(CLin_Vector *b, CLin_Vector *x, double gmresTol)
 {
-	return GmresSolve(b, x, gmresTol, true);
+	return m_clsGlobalVars.m_bAuto ? GmresSolveAutomatic(b, x, gmresTol, true) :
+		GmresSolve(b, x, gmresTol, true);
+}
+
+int CSolveCap::GmresSolveAutomatic(CLin_Vector *b, CLin_Vector *x, double gmresTol, bool flexible)
+{
+	int ret = GmresSolve(b, x, gmresTol, flexible);
+	if(ret != FC_NORMAL_END || !m_bGmresConverged) return ret;
+	const double normb = GmresNorm(*b);
+	if(normb == 0.0) return FC_NORMAL_END;
+	double normr;
+	ret = GmresResidual(b, x, normr);
+	if(ret != FC_NORMAL_END || normr == 0.0) return ret;
+	CLin_Vector residual, correction;
+	if(!residual.newsize(b->size()) || !correction.newsize(b->size())) return FC_OUT_OF_MEMORY;
+	// A residual normalized by the original excitation can hide a large charge
+	// error. Solve A*correction = b-A*x, normalizing each solve by its own RHS.
+	// Corrections must settle below one quarter of the automatic target before
+	// comparing meshes; this is an algebraic estimator, not a geometry bound.
+	for(int refinement=0; refinement<SOLVE_MAX_AUTO_CORRECTIONS; ++refinement) {
+		residual = m_clsGmres_r;
+		ret = GmresSolve(&residual, &correction, gmresTol, flexible);
+		if(ret != FC_NORMAL_END || !m_bGmresConverged) return ret;
+		for(unsigned long k=0; k<x->size(); ++k) (*x)[k] += correction[k];
+		if(!isfinite(GmresNorm(*x))) return FC_INVALID_RESULT;
+		double relativeCorrection = GmresCorrectionRatio(correction, *x);
+		if(isnan(relativeCorrection)) return FC_INVALID_RESULT;
+		LogMsg("Automatic charge correction %d: relative change %.6g\n", refinement+1, relativeCorrection);
+		ret = GmresResidual(b, x, normr);
+		if(ret != FC_NORMAL_END) return ret;
+		if(normr == 0.0 || (relativeCorrection <= m_clsGlobalVars.m_dAutoMaxErr / 4.0 &&
+			normr / normb < gmresTol)) return FC_NORMAL_END;
+	}
+	ErrMsg("Error: automatic charge solve did not stabilize within %d residual corrections\n", SOLVE_MAX_AUTO_CORRECTIONS);
+	m_bGmresConverged = false;
+	return FC_NORMAL_END;
 }
 
 int CSolveCap::gmresPrecondSFastAllX0(CLin_Vector *b, CLin_Vector *x, CLin_Vector *x0)
