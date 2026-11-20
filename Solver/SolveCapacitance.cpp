@@ -710,6 +710,7 @@ void CSolveCap::OutputSolveStats()
 		LogMsg("Time for building potential matrix: %fs\n", m_clsMulthier.m_fDurationRefine);
 		LogMsg("Time for precond calculation: %fs\n", m_fDurationPrecond);
 		LogMsg("Time for gmres solving: %fs\n", m_fDurationSolve);
+		m_clsMulthier.OutputMultiplyTimings();
 
 		LogMsg("Memory allocated for panel hierarchy: %lu bytes\n", g_clsMemUsage.m_ulPanelsMem);
 		LogMsg("Memory allocated for links structure: %lu bytes\n", g_clsMemUsage.m_ulLinksMem);
@@ -1007,6 +1008,7 @@ int CSolveCap::RefineGeoAndCountLinks()
 int CSolveCap::SolveComputeLinks()
 {
 	int ret;
+	m_clsMulthier.ResetMultiplyTimings();
 
 	LogMsg("***************************************\n");
 	LogMsg("Computing the links.. \n");

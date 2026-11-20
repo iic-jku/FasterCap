@@ -50,10 +50,15 @@ public:
 	void CopyChargesToVec(CLin_Vector *q);
 	void CopyVecToCharges(CLin_Vector *q);
 	void InitFlatLinks();
+	void ResetMultiplyTimings();
+	void OutputMultiplyTimings();
 
 	unsigned long m_ulFirstCondElemIndex;
 
 protected:
+	double m_dChargeWallTime, m_dLinkWallTime, m_dFieldWallTime, m_dLoadWallTime;
+	unsigned long m_ulTimedProducts;
+
 	void ComputePanelCharges_fast();
 	int ComputePanelPotentials_2fast();
 	void ComputeLeafPotentials_fast();
