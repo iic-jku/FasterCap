@@ -4,6 +4,21 @@ Copyright (c) 2019
 FastFieldSolvers S.R.L.  http://www.fastfieldsolvers.com
 ==================
 
+Version 6.4.0, 2026/11/20
+- Integrate dielectric target flux and preserve coupled field direction and moments through hierarchical grouping
+- Bound 3D collocation groups using physical descendant extents
+- Corrected grouping changes numerical results, link counts, memory and runtime
+- Correct complex and material-specific block preconditioning and 2D kernel dispatch
+- Verify automatic algebraic accuracy with bounded weighted charge corrections
+- Use fixed-lane compensated `GMRES` products to remove buffer-alignment-dependent reductions
+- Defer parallel coefficient diagnostics, count directed coefficients consistently and stop on invalid coefficient blocks
+- Balance dielectric link multiplication across threads without changing each target summation order or adding link storage
+- Add optional `-i` hierarchy wall timings and resource-bounded fixed-mesh thread benchmarks
+- Reject incomplete or nonfinite conductor and dielectric list records with `FC_FILE_ERROR` (exit 74)
+- Preserve the numerical JSON schema and raw matrix ordering without symmetrizing matrices
+- Mark `dev-latest` as a prerelease so development builds do not replace stable release discovery
+- Physical automatic stopping (#78), broader cross-platform variation (#10) and the historical triangulation assertion (#7) remain open
+
 Version 6.3.0, 2026/11/19
 - Optional `--report=<path>` writes full-precision real/complex matrices, solver status, quality diagnostics and build provenance as JSON
 - Existing console/CSV formats are retained
