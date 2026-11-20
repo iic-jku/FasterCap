@@ -802,7 +802,17 @@ int CAutoRefine::AutoRefineLinks(CAutoRefGlobalVars globalVars)
 						// interacting panels have already been identified
 						element2 = m_pdPanelPtrLinks[m_ucInteractionLevel][localChunk][localPosInChunk];
 						// calculate coefficient of potential
-						PotEstimateOpt(node, element2, potestim1);
+						// Grouped dielectric targets store the radial field factor.
+						// Project onto each leaf normal only after downward propagation.
+						if(UsesDielectricField(node) && !node->IsLeaf()) {
+							C3DVector target = ((CAutoPanel*)node)->GetCentroid();
+							C3DVector source = ((CAutoPanel*)element2)->GetCentroid();
+							double distance = Mod(target - source);
+							potestim1 = 1.0 / (FOUR_PI_TIMES_E0 * distance * distance * distance);
+						}
+						else {
+							PotEstimateOpt(node, element2, potestim1);
+						}
 						// and store it
 						m_dPotCoeffLinks[m_ucInteractionLevel][localChunk][localPosInChunk] = potestim1;
 					}
@@ -3459,6 +3469,11 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 		}
 
 	}
+	// Qualocation integrates the target flux before sampling the source centroid.
+	else if(m_clsGlobalVars.m_cScheme == AUTOREFINE_COLLOCATION) {
+		potestim1 = m_clsPotential.MutualDHalfNumerical(panel1->m_clsVertex,
+			panel2->m_clsVertex, panel1->GetDielNormal(), 0.0, 1);
+	}
 	// if panel1 is dielectric
 	else {
 
@@ -3616,6 +3631,11 @@ int CAutoRefine::PotEstimateOpt(CAutoPanel *panel1, CAutoPanel *panel2, double &
 
 	isdiel1 = panel1->m_ucType & AUTOPANEL_IS_DIEL;
 	isdiel2 = panel2->m_ucType & AUTOPANEL_IS_DIEL;
+	if(m_clsGlobalVars.m_cScheme == AUTOREFINE_COLLOCATION && (isdiel1 || isdiel2)) {
+		int status = PotEstimateOpt(panel1, panel2, potestim1, computePrecond);
+		if(status != AUTOREFINE_NO_ERROR) return status;
+		return PotEstimateOpt(panel2, panel1, potestim2, computePrecond);
+	}
 
 	// if panel distance is too small, something strange here: they should have
 	// already been refined. Possible causes are:

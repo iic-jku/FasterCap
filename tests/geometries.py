@@ -246,48 +246,67 @@ def nested_dielectric_cubes_geometry(permittivity):
     return Geometry(write, 2, {}, [])
 
 
-def coated_spheres_geometry(permittivity, coat_radius=2.0, depth=3, split_coat=False,
-                            offset=(0.0, 0.0, 0.0)):
-    """Nested conductors with a coat; offset moves the inner conductor and its coat."""
-    inner_radius, outer_radius = 1.0, 3.0
+def layered_spheres_geometry(permittivities, interface_radii, depth=3, split_coat=False,
+                             offset=(0.0, 0.0, 0.0), split_half=False):
+    """Nested conductors with concentric dielectric layers between radii 1 and 3.
+
+    Offset moves the inner conductor and all interfaces. Splitting changes only
+    the first interface's triangulation, leaving its physical surface unchanged.
+    """
+    radii = [1.0, *interface_radii, 3.0]
+    assert len(permittivities) == len(radii) - 1
+    assert all(a < b for a, b in zip(radii, radii[1:]))
+    names = ["inner", *["coat" if i == 0 else "coat%d" % (i+1)
+                        for i in range(len(interface_radii))], "outer"]
 
     def write(directory):
-        for name, radius in (("inner", inner_radius), ("coat", coat_radius), ("outer", outer_radius)):
+        for name, radius in zip(names, radii):
             panels = icosphere_panels(name, radius, depth)
-            if name != "outer":
-                panels = [(kind, label, [tuple(x + shift for x, shift in zip(v, offset))
-                                         for v in vertices])
-                          for kind, label, vertices in panels]
             if split_coat and name == "coat":
-                # Bisect each planar facet without changing the interface geometry.
-                # Depth 2 then has 1280 total panels: just over one link block.
+                # Bisect facets without moving their support plane. Splitting
+                # only one hemisphere also exercises unequal source-panel areas.
                 split = []
                 for kind, label, (a, b, c) in panels:
+                    if split_half and a[0] + b[0] + c[0] <= 0:
+                        split.append((kind, label, (a, b, c)))
+                        continue
                     midpoint = tuple((x+y)/2 for x, y in zip(a, b))
                     split.extend([(kind, label, (a, midpoint, c)),
                                   (kind, label, (midpoint, b, c))])
                 panels = split
+            if name != "outer":
+                panels = [(kind, label, [tuple(x + shift for x, shift in zip(v, offset))
+                                         for v in vertices])
+                          for kind, label, vertices in panels]
             _write_panels(os.path.join(directory, name + ".txt"), name, panels)
-        er = permittivity_text(permittivity)
         path = os.path.join(directory, "coated_spheres.lst")
-        # The coat center is on the inner ('-') side of the interface. The outer
-        # conductor has vacuum on both sides, including its capacitance to infinity.
-        _write_list(path, ["C inner.txt %s 0 0 0" % er,
-                           "D coat.txt 1.0 %s 0 0 0 %s -" % (er, _fmt(offset)),
-                           "C outer.txt 1.0 0 0 0"])
+        lines = ["C inner.txt %s 0 0 0" % permittivity_text(permittivities[0])]
+        for i, name in enumerate(names[1:-1]):
+            # The shared center is on the inner ('-') side of each interface.
+            lines.append("D %s.txt %s %s 0 0 0 %s -" %
+                         (name, permittivity_text(permittivities[i+1]),
+                          permittivity_text(permittivities[i]), _fmt(offset)))
+        lines.append("C outer.txt %s 0 0 0" % permittivity_text(permittivities[-1]))
+        _write_list(path, lines)
         return path
 
-    # Integrate E = Q/(4*pi*eps*r*r) through the two annuli in series. The outer
-    # sphere adds 4*pi*eps0*R to C22; inner excitation has no field outside it.
-    coupling = FOUR_PI_EPS0 / ((1.0 / inner_radius - 1.0 / coat_radius) / permittivity
-                              + 1.0 / coat_radius - 1.0 / outer_radius)
+    # Integrate E = Q/(4*pi*eps*r*r) through each annulus in series. The outer
+    # conductor adds capacitance to infinity in the outermost medium.
+    coupling = FOUR_PI_EPS0 / sum((1.0/a - 1.0/b) / er
+                                  for a, b, er in zip(radii, radii[1:], permittivities))
     analytic = {(1, 1): coupling, (1, 2): -coupling, (2, 1): -coupling,
-                (2, 2): coupling + FOUR_PI_EPS0 * outer_radius}
+                (2, 2): coupling + FOUR_PI_EPS0 * permittivities[-1] * radii[-1]}
     if any(offset):
-        # Reciprocity and shielding still hold, but the spherical series-capacitor
-        # formula requires concentric interfaces.
+        # Reciprocity and shielding still hold; the spherical formula does not.
         analytic = {}
     return Geometry(write, 2, analytic, [])
+
+
+def coated_spheres_geometry(permittivity, coat_radius=2.0, depth=3, split_coat=False,
+                            offset=(0.0, 0.0, 0.0), split_half=False):
+    """Nested conductors with one coat; offset moves the inner conductor and coat."""
+    return layered_spheres_geometry([permittivity, 1.0], [coat_radius], depth,
+                                    split_coat, offset, split_half)
 
 
 def write_three_cubes_single_file(directory):
@@ -410,6 +429,9 @@ COATED_COAX_C = 2.0 * math.pi * EPS0 / (math.log(COAX_COAT_RADIUS / RADIUS) / CO
 
 
 GEOMETRIES = {
+    "layered_spheres_flux": layered_spheres_geometry([10.0, 3.0, 1.0], [1.6, 2.3], depth=2),
+    "coated_spheres_flux_uneven": coated_spheres_geometry(100.0, depth=2,
+                                                          split_coat=True, split_half=True),
     "coated_spheres_flux": coated_spheres_geometry(10.0, depth=2),
     "coated_spheres_flux_lossy": coated_spheres_geometry(10.0-2.0j, depth=2),
     "coated_spheres_flux_high_contrast": coated_spheres_geometry(100.0, depth=2),

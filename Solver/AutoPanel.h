@@ -197,6 +197,8 @@ public:
 	unsigned char m_ucMaxSide;
 	C3DVector_float m_clsVertex[3];
 	C3DVector_float m_clsNormal, m_clsCentroid;
+	// Transient unprojected field from grouped dielectric interactions.
+	C3DVector m_clsField;
 
 protected:
     // virtual functions

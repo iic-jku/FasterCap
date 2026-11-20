@@ -89,6 +89,9 @@ void CMultHier::ComputePanelCharges_fast()
 		m_clsRecursVec[i] = (*itc1)->m_uTopElement.m_pTopPanel;
 
 		do {
+			if(UsesDielectricField(m_clsRecursVec[i])) {
+				((CAutoPanel*)m_clsRecursVec[i])->m_clsField = C3DVector(0,0,0);
+			}
 			if(m_clsRecursVec[i]->IsLeaf()) {
 				// if leaf panel, simply copy charge value from input array
 				m_clsRecursVec[i]->m_dCharge = m_clsChargeVect[m_dIndex];
@@ -206,6 +209,7 @@ int CMultHier::ComputePanelPotentials_2fast()
             unsigned long localLinkIndex, localChunk, localPosInChunk;
             // perform summation
             CAutoElement *node = m_pNodes[i];
+            const bool fieldExpansion = UsesDielectricField(node) && !node->IsLeaf();
             unsigned long linkIndexEnd = node->m_ulLinkIndexEnd[m_ucInteractionLevel];
             for(localLinkIndex = node->m_ulLinkIndexStart[m_ucInteractionLevel];
                 localLinkIndex < linkIndexEnd;
@@ -220,7 +224,18 @@ int CMultHier::ComputePanelPotentials_2fast()
                     if(localChunk < linkChunkNum) {
                         localPosInChunk = localLinkIndex % AUTOREFINE_LINK_CHUNK_SIZE;
                         // node potentials have already been zeroed in ComputePanelCharges_fast()
-                        node->m_dPotential += (localPanelPtrLinks[localChunk][localPosInChunk])->m_dCharge * localPotCoeffLinks[localChunk][localPosInChunk];
+                        CAutoElement *source = localPanelPtrLinks[localChunk][localPosInChunk];
+                        double contribution = source->m_dCharge * localPotCoeffLinks[localChunk][localPosInChunk];
+                        if(fieldExpansion) {
+                            CAutoPanel *targetPanel = (CAutoPanel*)node;
+                            C3DVector targetCenter = targetPanel->GetCentroid();
+                            C3DVector sourceCenter = ((CAutoPanel*)source)->GetCentroid();
+                            C3DVector field = (targetCenter - sourceCenter) * contribution;
+                            targetPanel->m_clsField += field;
+                        }
+                        else {
+                            node->m_dPotential += contribution;
+                        }
                         
                         // this is a hotspot, only check this in debug mode…
 #ifndef NDEBUG
@@ -263,6 +278,11 @@ void CMultHier::ComputeLeafPotentials_fast()
 			if(m_clsRecursVec[i]->IsLeaf()) {
 				// if leaf, store resulting potential in the array
 				// to be returned to the caller as mult result
+				// A group normal cannot represent the different normals of its leaves.
+				if(UsesDielectricField(m_clsRecursVec[i])) {
+					CAutoPanel *panel = (CAutoPanel*)m_clsRecursVec[i];
+					panel->m_dPotential += DotProd(panel->m_clsField, panel->GetDielNormal());
+				}
 				m_clsPotVect[m_dIndex] = m_clsRecursVec[i]->m_dPotential;
 				m_dIndex++;
 				// and go up in the stack
@@ -284,6 +304,11 @@ void CMultHier::ComputeLeafPotentials_fast()
 					// add panel potential to children potentials
 					m_clsRecursVec[i]->m_pLeft->m_dPotential += m_clsRecursVec[i]->m_dPotential;
 					m_clsRecursVec[i]->m_pRight->m_dPotential += m_clsRecursVec[i]->m_dPotential;
+					if(UsesDielectricField(m_clsRecursVec[i])) {
+						CAutoPanel *panel = (CAutoPanel*)m_clsRecursVec[i];
+						panel->GetLeftChild()->m_clsField += panel->m_clsField;
+						panel->GetRightChild()->m_clsField += panel->m_clsField;
+					}
 					// and go visit the left branch
 					m_clsRecursVec[i+1] = m_clsRecursVec[i]->m_pLeft;
 					i++;

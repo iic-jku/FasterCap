@@ -1,0 +1,10 @@
+# Coarse inscribed spheres retain the existing 2% analytic envelope. Allow only
+# 0.5% additional matrix error from grouping at fixed mesh size, and 1% total
+# reciprocity error including the roughly 0.4% conductor-collocation defect.
+# This is a moderate-contrast regression, not a high-contrast accuracy guarantee.
+# Nine serial solves, exactly 960 panels, no automatic mesh growth.
+add_test(NAME dielectric_hierarchy_matrix
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_dielectric_hierarchy.py
+        --fastercap $<TARGET_FILE:FasterCap>
+        --workdir ${CMAKE_CURRENT_BINARY_DIR}/dielectric_hierarchy_matrix)
+set_tests_properties(dielectric_hierarchy_matrix PROPERTIES TIMEOUT 60)
