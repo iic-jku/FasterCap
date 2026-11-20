@@ -58,9 +58,37 @@ static void GatherDielectricMoments(CAutoPanel *panel)
 	}
 }
 
+// Timers are enabled only by -i and have one writer outside worker loops.
+class CMultiplyWallTimer
+{
+public:
+	CMultiplyWallTimer(double &total, bool enabled) : m_dTotal(total), m_bEnabled(enabled),
+		m_dStart(enabled ? omp_get_wtime() : 0.0) {}
+	~CMultiplyWallTimer() { if(m_bEnabled) m_dTotal += omp_get_wtime() - m_dStart; }
+private:
+	double &m_dTotal;
+	bool m_bEnabled;
+	double m_dStart;
+};
+
 CMultHier::CMultHier()
 {
+	ResetMultiplyTimings();
+}
 
+void CMultHier::ResetMultiplyTimings()
+{
+	m_dChargeWallTime = m_dLinkWallTime = m_dFieldWallTime = m_dLoadWallTime = 0.0;
+	m_ulTimedProducts = 0;
+}
+
+void CMultHier::OutputMultiplyTimings()
+{
+	LogMsg("Hierarchical products: %lu\n", m_ulTimedProducts);
+	LogMsg("Hierarchy charge/moments wall time: %.9gs\n", m_dChargeWallTime);
+	LogMsg("Hierarchy links wall time (includes I/O): %.9gs\n", m_dLinkWallTime);
+	LogMsg("Hierarchy downward field wall time: %.9gs\n", m_dFieldWallTime);
+	LogMsg("Hierarchy link loading wall time: %.9gs\n", m_dLoadWallTime);
 }
 
 CMultHier::~CMultHier()
@@ -85,6 +113,8 @@ void CMultHier::DeallocateMemory()
 // Unrolling the recursion, for speed
 void CMultHier::ComputePanelCharges_fast()
 {
+	CMultiplyWallTimer timer(m_dChargeWallTime, m_clsGlobalVars.m_bDumpTimeMem);
+	if(m_clsGlobalVars.m_bDumpTimeMem) ++m_ulTimedProducts;
 	bool moments = false;
 	for(StlAutoCondDeque::iterator conductor = m_stlConductors.begin();
 		conductor != m_stlConductors.end(); ++conductor) {
@@ -167,6 +197,7 @@ void CMultHier::ComputePanelCharges_fast()
 // matrix, that in spite of n^3 complexity, is very fast for small n
 int CMultHier::ComputePanelPotentials_2fast()
 {
+	CMultiplyWallTimer timer(m_dLinkWallTime, m_clsGlobalVars.m_bDumpTimeMem);
 	int ret;
 	unsigned long linkIndex, chunk, block, nodeIndex, nodeBlockEnd, linksPerBlock;
 	// 'i' must have signed integral type due to MS OpenMP limitation (does not accept unsigned)
@@ -184,6 +215,7 @@ int CMultHier::ComputePanelPotentials_2fast()
 	m_ulCurrBlock = 0;
 	// only if we went out-of-core, pre-load first set of chunks
 	if(m_ulBlocksNum > 1) {
+		CMultiplyWallTimer loadTimer(m_dLoadWallTime, m_clsGlobalVars.m_bDumpTimeMem);
 		ret = LoadLinks(m_ulCurrBlock);
 		if(ret != FC_NORMAL_END) {
 			return ret;
@@ -205,6 +237,7 @@ int CMultHier::ComputePanelPotentials_2fast()
 		block = chunk / linkChunkNum;
         // if not in current block
 		if(block != m_ulCurrBlock) {
+			CMultiplyWallTimer loadTimer(m_dLoadWallTime, m_clsGlobalVars.m_bDumpTimeMem);
 			ret = LoadLinks(block);
 			if(ret != FC_NORMAL_END) {
 				return ret;
@@ -292,6 +325,7 @@ int CMultHier::ComputePanelPotentials_2fast()
 // Unrolling the recursion, for speed
 void CMultHier::ComputeLeafPotentials_fast()
 {
+	CMultiplyWallTimer timer(m_dFieldWallTime, m_clsGlobalVars.m_bDumpTimeMem);
 	int i;
 	StlAutoCondDeque::iterator itc1;
 
