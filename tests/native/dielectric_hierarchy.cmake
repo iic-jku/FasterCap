@@ -7,6 +7,8 @@ if(FASTFIELDSOLVERS_HEADLESS)
     # For a neutral and nonneutral source pair, halving size/distance must reduce
     # the error by at least 1/0.3: second-order relative convergence gives 1/4,
     # with room for higher-order terms and float centroid coordinates.
+    # Widely separated tiny patches must produce four directed leaf links,
+    # even though the area-equivalent triangle would allow just two group links.
     add_executable(test_dielectric_hierarchy test_dielectric_hierarchy.cpp)
     target_link_libraries(test_dielectric_hierarchy FasterCapSolver)
     add_test(NAME dielectric_hierarchy COMMAND test_dielectric_hierarchy)

@@ -5,6 +5,7 @@
 #define FASTER_CAP_DIELECTRIC_EXPANSION_H
 
 #include "Geometry/Vector3D.h"
+#include <cmath>
 
 namespace DielectricExpansion {
 inline unsigned int Index(int a, int b)
@@ -23,6 +24,37 @@ inline unsigned int Index(int a, int b, int c)
 	return index[a][b][c];
 }
 }
+
+// Bounds use the physical descendants, not a superpanel's synthetic triangle.
+// Qualocation source leaves are centroid points; target leaves are triangles.
+class CDielectricExpansionBounds
+{
+public:
+	void SetLeaf(const C3DVector_float vertices[3], C3DVector center)
+	{
+		m_dSourceRadius = m_dTargetRadius = 0.0;
+		for(int i=0; i<3; ++i) {
+			double distance = Mod(C3DVector(vertices[i])-center);
+			if(distance > m_dTargetRadius) m_dTargetRadius = distance;
+		}
+	}
+
+	void SetChildren(const CDielectricExpansionBounds &left, double leftShift,
+		const CDielectricExpansionBounds &right, double rightShift)
+	{
+		m_dSourceRadius = std::fmax(left.m_dSourceRadius+leftShift, right.m_dSourceRadius+rightShift);
+		m_dTargetRadius = std::fmax(left.m_dTargetRadius+leftShift, right.m_dTargetRadius+rightShift);
+	}
+
+	bool AcceptsSource(const CDielectricExpansionBounds &source, double distance) const
+	{
+		// Total degree two omits cubic terms. Keep both clusters inside one
+		// quarter of the separation, well within the expansion's convergence ball.
+		return m_dTargetRadius + source.m_dSourceRadius <= 0.25*distance;
+	}
+
+	double m_dSourceRadius, m_dTargetRadius;
+};
 
 class CDielectricChargeMoments
 {
@@ -63,44 +95,54 @@ public:
 	// A leaf target already has the exact monopole integral in its scalar link;
 	// it needs only the source-moment correction, without another local expansion.
 	void AddSource(double charge, const CDielectricChargeMoments &source,
-		C3DVector r, double radial, bool expandTarget)
+		C3DVector r, double radial, bool expandTarget, bool sourceHasMoments = true)
 	{
-		double invSquaredDistance = 1.0 / DotProd(r,r);
-		double dipoleDot = 0.0, secondDot = 0.0;
+		const double x = r.x, y = r.y, z = r.z;
+		const double invSquaredDistance = 1.0 / DotProd(r,r);
+		double px = 0.0, py = 0.0, pz = 0.0, trace = 0.0;
 		C3DVector secondTimesR(0,0,0);
-		for(int a=0; a<3; ++a) {
-			dipoleDot += r[a] * source.m_dDipole[a];
-			for(int b=0; b<3; ++b)
-				secondTimesR[a] += source.m_dSecond[DielectricExpansion::Index(a,b)] * r[b];
-			secondDot += r[a] * secondTimesR[a];
+		// Physical leaves are point sources. Their moments are identically zero;
+		// skip those contractions without discarding neutral non-leaf groups.
+		if(sourceHasMoments) {
+			px = source.m_dDipole[0]; py = source.m_dDipole[1]; pz = source.m_dDipole[2];
+			const double *s = source.m_dSecond;
+			secondTimesR.x = s[0]*x + s[1]*y + s[2]*z;
+			secondTimesR.y = s[1]*x + s[3]*y + s[4]*z;
+			secondTimesR.z = s[2]*x + s[4]*y + s[5]*z;
+			trace = s[0] + s[3] + s[5];
 		}
-		double trace = source.m_dSecond[0] + source.m_dSecond[3] + source.m_dSecond[5];
-		// Contract the symmetric moments directly instead of constructing all
-		// 9 gradient and 27 Hessian entries for every directed link.
+		double dipoleDot = x*px + y*py + z*pz;
+		double secondDot = x*secondTimesR.x + y*secondTimesR.y + z*secondTimesR.z;
 		double alongR = (3*dipoleDot - 1.5*trace + 7.5*secondDot*invSquaredDistance) * invSquaredDistance;
 		if(expandTarget) alongR += charge;
-		for(int a=0; a<3; ++a) {
-			m_clsField[a] += radial * (r[a]*alongR - source.m_dDipole[a] -
-				3*secondTimesR[a]*invSquaredDistance);
-		}
+		m_clsField.x += radial*(x*alongR - px - 3*secondTimesR.x*invSquaredDistance);
+		m_clsField.y += radial*(y*alongR - py - 3*secondTimesR.y*invSquaredDistance);
+		m_clsField.z += radial*(z*alongR - pz - 3*secondTimesR.z*invSquaredDistance);
 		if(!expandTarget) return;
 		double identity = radial * (charge + 3*dipoleDot*invSquaredDistance);
 		double outer = -radial * (3*charge + 15*dipoleDot*invSquaredDistance) * invSquaredDistance;
 		double mixed = 3*radial*invSquaredDistance;
-		double hessianLinear = -3*radial*charge*invSquaredDistance;
-		double hessianCubic = 15*radial*charge*invSquaredDistance*invSquaredDistance;
-		for(int a=0; a<3; ++a) {
-			for(int b=a; b<3; ++b) {
-				unsigned int ab = DielectricExpansion::Index(a,b);
-				m_dGradient[ab] += (a == b ? identity : 0.0) + outer*r[a]*r[b] +
-					mixed*(r[a]*source.m_dDipole[b] + r[b]*source.m_dDipole[a]);
-				for(int c=b; c<3; ++c) {
-					m_dHessian[DielectricExpansion::Index(a,b,c)] += hessianLinear *
-						((a == b ? r[c] : 0.0) + (a == c ? r[b] : 0.0) + (b == c ? r[a] : 0.0)) +
-						hessianCubic*r[a]*r[b]*r[c];
-				}
-			}
-		}
+		// Store only independent Cartesian components: xx,xy,xz,yy,yz,zz.
+		// Explicit components avoid indexed-vector branches in every linked pair.
+		m_dGradient[0] += identity + outer*x*x + mixed*(x*px+x*px);
+		m_dGradient[1] += outer*x*y + mixed*(x*py+y*px);
+		m_dGradient[2] += outer*x*z + mixed*(x*pz+z*px);
+		m_dGradient[3] += identity + outer*y*y + mixed*(y*py+y*py);
+		m_dGradient[4] += outer*y*z + mixed*(y*pz+z*py);
+		m_dGradient[5] += identity + outer*z*z + mixed*(z*pz+z*pz);
+		double linear = -3*radial*charge*invSquaredDistance;
+		double cubic = 15*radial*charge*invSquaredDistance*invSquaredDistance;
+		// xxx,xxy,xxz,xyy,xyz,xzz,yyy,yyz,yzz,zzz.
+		m_dHessian[0] += linear*(x+x+x) + cubic*x*x*x;
+		m_dHessian[1] += linear*y + cubic*x*x*y;
+		m_dHessian[2] += linear*z + cubic*x*x*z;
+		m_dHessian[3] += linear*x + cubic*x*y*y;
+		m_dHessian[4] += cubic*x*y*z;
+		m_dHessian[5] += linear*x + cubic*x*z*z;
+		m_dHessian[6] += linear*(y+y+y) + cubic*y*y*y;
+		m_dHessian[7] += linear*z + cubic*y*y*z;
+		m_dHessian[8] += linear*y + cubic*y*z*z;
+		m_dHessian[9] += linear*(z+z+z) + cubic*z*z*z;
 	}
 
 	void AddParent(const CDielectricFieldExpansion &parent, C3DVector shift)

@@ -257,7 +257,7 @@ int CMultHier::ComputePanelPotentials_2fast()
                             C3DVector sourceCenter = ((CAutoPanel*)source)->GetCentroid();
                             targetPanel->m_clsFieldExpansion.AddSource(source->m_dCharge,
                                 ((CAutoPanel*)source)->m_clsChargeMoments, targetCenter - sourceCenter,
-                                localPotCoeffLinks[localChunk][localPosInChunk], true);
+                                localPotCoeffLinks[localChunk][localPosInChunk], true, !source->IsLeaf());
                         }
                         else {
                             node->m_dPotential += contribution;

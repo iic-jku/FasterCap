@@ -675,3 +675,21 @@ void CAutoQPanel::ErrorPrintCoords()
 //	       GetCentroid().x, GetCentroid().y, GetCentroid().z);
 }
 
+
+// Build conservative expansion radii after physical mesh refinement. Translation
+// of child balls uses the same stored centers as the moment expansions.
+void CAutoPanel::CalcExpansionBounds()
+{
+	if(IsLeaf()) {
+		m_clsExpansionBounds.SetLeaf(m_clsVertex,GetCentroid());
+		return;
+	}
+	CAutoPanel *left = GetLeftChild(), *right = GetRightChild();
+	left->CalcExpansionBounds();
+	right->CalcExpansionBounds();
+	C3DVector center = GetCentroid();
+	m_clsExpansionBounds.SetChildren(left->m_clsExpansionBounds,
+		Mod(C3DVector(left->GetCentroid())-center), right->m_clsExpansionBounds,
+		Mod(C3DVector(right->GetCentroid())-center));
+}
+

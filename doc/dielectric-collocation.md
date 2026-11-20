@@ -1,6 +1,6 @@
 # Dielectric collocation and hierarchical fields
 
-The experimental 3D collocation scheme integrates the normal field over each
+The 3D collocation scheme integrates the normal field over each
 dielectric target triangle and uses a source-centroid quadrature point. The
 two mutual-interaction interfaces use the same calculation. The matrix is not
 symmetrized after solving.
@@ -30,7 +30,7 @@ displacements `u_i` and `s = sum(u_i)`, these moments are `s/3` and
 - A parent normal cannot replace the different or opposite normals of its leaves
 - Translating only target fields or correcting only source moments omits coupled terms
 - A leaf target's scalar link already integrates the source monopole exactly; only source-moment corrections are added there
-- Direct leaf-to-leaf interactions, self terms, conductor equations, Galerkin and 2D equations keep their existing kernels
+- Direct dielectric leaf pairs use the target-integrated kernel; self terms, conductor equations, Galerkin and 2D equations keep their existing kernels
 - Real and imaginary products each initialize their own moment and field accumulation
 
 `CAutoRefine::UsesDielectricField()` defines where this representation applies.
@@ -39,12 +39,31 @@ Non-leaf dielectric targets store the scalar radial factor
 condition. `CAutoRefine::PotEstimateOpt()` continues to return scalar estimates for
 preconditioners and direct interactions.
 
-The transient state stores 28 doubles per 3D panel, including internal tree nodes:
-224 bytes, or 200 bytes more than the earlier constant-vector implementation.
+The transient moments and fields store 28 doubles per 3D panel, including internal
+tree nodes. Two additional doubles bound the physical source and target extents:
+240 bytes in total, or 216 bytes more than the earlier constant-vector implementation.
 Symmetric tensors store only their distinct components. Source moments are gathered
-only for 3D collocation models containing a dielectric. Each directed link still
+only for 3D collocation models containing a dielectric. Physical source leaves skip
+moment contractions because their moments are exactly zero. Neutral groups still
+contribute their nonzero moments. Explicit symmetric components avoid indexed-vector
+branches in the linked-pair kernel. Each directed link still
 stores one double, and the out-of-core block layout is unchanged. One worker owns
 each node's link sum; downward propagation occurs after every block has contributed.
+
+After mesh refinement, source bounds enclose every descendant leaf centroid and
+target bounds enclose every descendant triangle vertex. Child bounds are translated
+about the same stored centers used by the expansion. The artificial triangle whose
+area represents a superpanel cannot supply these bounds: its area does not constrain
+the distance between disconnected or unevenly distributed descendants.
+
+A compressed dielectric interaction requires the sum of its source and target radii
+to be at most one quarter of the center distance, in addition to the existing
+interaction checks. The retained quadratic expansion omits cubic terms; reducing
+the displacement ratio from one half to one quarter reduces their leading size by
+a factor of eight and keeps the expansion away from its convergence boundary.
+This is a geometric convergence margin, not a bound on the conditioned capacitance
+error. Failed checks descend the existing hierarchy; physical leaf pairs keep their
+direct kernel. Conductor-only, Galerkin and 2D link selection is unchanged.
 
 The bounded regressions cover uniform fields, exact integration of a known harmonic
 quadratic, far-field convergence with neutral and nonneutral sources, repeated
@@ -52,7 +71,16 @@ products, and fixed-mesh moderate- and high-contrast comparisons against direct
 interactions. Source and target moments must be improved together: isolated
 higher-order corrections can substantially worsen dielectric charge conservation.
 
-Higher expansion order does not establish an accuracy bound for every accepted
-link. Loose grouping, uneven meshes, automatic refinement and very large dielectric
-contrast still need investigation. A small linear-system residual or reciprocal
-matrix alone does not establish physical accuracy or release readiness.
+The correction is enabled by default for 3D dielectric collocation because the old
+group-normal representation does not represent its physical leaves. Retaining that
+representation as a compatibility option would retain the defect. Numerical results,
+selected links, memory use and runtime can change. Tighter grouping can be necessary
+for high dielectric contrast; `-d` remains an interaction heuristic, not a relative
+capacitance-error guarantee. In particular, loose conductor-potential grouping can
+dominate the remaining matrix error even with exact dielectric interactions.
+
+Automatic charge corrections test algebraic convergence separately. Mesh approximation,
+hierarchical compression and very large dielectric contrast can still limit physical
+accuracy. Compare fixed-mesh grouped and direct solves on bounded models, or analytic
+values across successive mesh refinements. A small linear-system residual or reciprocal
+matrix alone does not establish physical accuracy.

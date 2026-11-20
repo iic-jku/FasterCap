@@ -201,6 +201,8 @@ public:
 	// Transient coupled source/target expansion for dielectric collocation.
 	CDielectricChargeMoments m_clsChargeMoments;
 	CDielectricFieldExpansion m_clsFieldExpansion;
+	CDielectricExpansionBounds m_clsExpansionBounds;
+	void CalcExpansionBounds();
 
 protected:
     // virtual functions

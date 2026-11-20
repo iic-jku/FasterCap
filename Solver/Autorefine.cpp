@@ -437,6 +437,11 @@ int CAutoRefine::AutoRefinePanels(CAutoRefGlobalVars globalVars, unsigned char i
 		}
 	}
 
+	if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER && m_clsGlobalVars.m_cScheme == AUTOREFINE_COLLOCATION && m_lDielNum > 0) {
+		for(itc1 = m_stlConductors.begin(); itc1 != m_stlConductors.end(); ++itc1)
+			(*itc1)->m_uTopElement.m_pTopPanel->CalcExpansionBounds();
+	}
+
 	// allocate nodes array (will be populated in RecurseIndex() called in AutoRefineLinks() )
 	SAFENEW_ARRAY_RET(CAutoElement*, m_pNodes, m_ulNodeNum[m_ucInteractionLevel], g_clsMemUsage.m_ulPanelsMem)
 
@@ -2988,6 +2993,11 @@ int CAutoRefine::RefineMutual(CAutoPanel *panel1, CAutoPanel *panel2)
 		// check interaction condition against the threshold;
 		// use different criteria for conductor and dielectric
 		forcerefinement = RefineCriteria(&panel1crit, &panel2crit, panel1, panel2, &dist, rdist, rmax, m_clsGlobalVars.m_dEps);
+
+		if((UsesDielectricField(panel1) && !panel1->m_clsExpansionBounds.AcceptsSource(panel2->m_clsExpansionBounds,rdist)) ||
+			(UsesDielectricField(panel2) && !panel2->m_clsExpansionBounds.AcceptsSource(panel1->m_clsExpansionBounds,rdist))) {
+			forcerefinement = true;
+		}
 
 		if(IsNearDielectric(panel1, panel2, rdist, rmax, AUTOREFINE_DIEL_SUPERPANEL_DIST)) {
 			forcerefinement = true;

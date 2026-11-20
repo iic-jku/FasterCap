@@ -12,7 +12,7 @@ import check_capacitance
 import geometries
 
 
-def solve(executable, directory, geometry, distance):
+def solve(executable, directory, geometry, distance, expected_panels=960):
     directory.mkdir(parents=True, exist_ok=True)
     model = geometry.write(str(directory))
     report = directory / "report.json"
@@ -26,7 +26,7 @@ def solve(executable, directory, geometry, distance):
     data = json.loads(report.read_text())
     iteration = data["iterations"][-1]
     assert data["status"]["exit_code"] == 0 and iteration["solve_status"]["exit_code"] == 0
-    assert iteration["finite"] and iteration["panels"] == 960
+    assert iteration["finite"] and iteration["panels"] == expected_panels
     matrix = iteration["matrix"]
     rows = [[complex(a, b) for a, b in zip(real, imaginary)]
             for real, imaginary in zip(matrix["real"], matrix["imaginary"])]
@@ -41,6 +41,7 @@ def main():
     parser.add_argument("--fastercap", required=True)
     parser.add_argument("--workdir", type=Path, required=True)
     parser.add_argument("--high-contrast", action="store_true")
+    parser.add_argument("--uneven", action="store_true")
     args = parser.parse_args()
     root = args.workdir.resolve()
     executable = str(Path(args.fastercap).resolve())
@@ -56,13 +57,21 @@ def main():
                      ("offset100", 100.0, (0.4, -0.2, 0.15), 2.0),
                      ("thin100", 100.0, (0, 0, 0), 1.125)]
         matrix_tolerance = 0.015 if args.high_contrast else 0.005
-        for name, permittivity, offset, radius in cases:
-            geometry = geometries.coated_spheres_geometry(permittivity, depth=2,
-                                                          offset=offset, coat_radius=radius)
-            reference, full_links = solve(executable, root / name / "direct", geometry, "1e-40")
-            assert full_links == 960 * 959
-            for distance in ("1e-35", "1e-36"):
-                matrix, links = solve(executable, root / name / distance, geometry, distance)
+        cases = [(name,geometries.coated_spheres_geometry(permittivity,depth=2,
+                   offset=offset,coat_radius=radius),960)
+                 for name,permittivity,offset,radius in cases]
+        distances = ("1e-35", "1e-36")
+        if args.uneven:
+            cases = [("split100",geometries.coated_spheres_geometry(100,depth=2,split_coat=True),1280),
+                     ("uneven100",geometries.coated_spheres_geometry(100,depth=2,split_coat=True,split_half=True),1112),
+                     ("layered",geometries.layered_spheres_geometry([100,10,1],[1.6,2.3],depth=2),1280)]
+            matrix_tolerance = 0.002
+            distances = ("1e-36",)
+        for name, geometry, panels in cases:
+            reference, full_links = solve(executable, root / name / "direct", geometry, "1e-40", panels)
+            assert full_links == panels * (panels-1)
+            for distance in distances:
+                matrix, links = solve(executable, root / name / distance, geometry, distance, panels)
                 assert 0 < links < full_links, "test must exercise grouped interactions"
                 error = max(abs(a-b)/abs(b) for row, ref in zip(matrix, reference) for a, b in zip(row, ref))
                 print("%s -d%s: %d links, %.6g%% difference from direct" %

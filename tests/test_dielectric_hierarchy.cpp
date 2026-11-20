@@ -7,6 +7,19 @@
 class CFieldProbe : public CMultHier
 {
 public:
+    unsigned long CountLinks(CAutoPanel *first, CAutoPanel *second)
+    {
+        m_clsGlobalVars.m_dEps = 1e10; // Isolate geometric admissibility.
+        m_dMaxSide = m_dMaxArea = 1.0;
+        m_bComputeLinks = false;
+        m_iLevel = m_iMaxLevel = 0;
+        m_ulLinksNum[0] = 0;
+        first->CalcExpansionBounds();
+        second->CalcExpansionBounds();
+        if(RefineMutual(first,second) != FC_NORMAL_END) return 0;
+        return m_ulLinksNum[0];
+    }
+
     int Interact(CAutoPanel *source, CAutoPanel *target, CLin_Vector &charge, CLin_Vector &result)
     {
         CAutoConductor sources, targets;
@@ -62,10 +75,42 @@ public:
 
 int main()
 {
+    g_bFCContinue = true;
     g_ucSolverType = SOLVERGLOBAL_3DSOLVER;
     CFieldProbe probe;
     probe.m_clsGlobalVars.m_cScheme = AUTOREFINE_COLLOCATION;
     int failures = 0;
+    // A superpanel's artificial triangle has the summed area, not the extent
+    // of its physical descendants. Two tiny patches eight units apart must
+    // not interact as one expansion with a point three units from their center.
+    // Exercise both the target-triangle and source-centroid bounds.
+    for(bool groupedTarget : {false,true}) {
+        CAutoPanel patches[2], group, single;
+        CAutoPanel *panels[] = {&patches[0],&patches[1],&single};
+        for(int i=0; i<3; ++i) {
+            double x = i==2 ? 3.0 : i==0 ? -4.0 : 4.0;
+            panels[i]->m_clsVertex[0].pos(x,0,0);
+            panels[i]->m_clsVertex[1].pos(x,0.125,0);
+            panels[i]->m_clsVertex[2].pos(x,0,0.125);
+            panels[i]->CalcPanelGeomPar();
+            panels[i]->m_ulLinkIndexStart[0] = panels[i]->m_ulLinkIndexEnd[0] = 0;
+            if((i<2) == groupedTarget)
+                panels[i]->m_ucType |= AUTOPANEL_IS_DIEL | AUTOPANEL_OUTPERM_NORMAL_DIR;
+        }
+        group.MakeSuperPanel(&patches[0],&patches[1]);
+        group.m_ulLinkIndexStart[0] = group.m_ulLinkIndexEnd[0] = 0;
+        unsigned long links = probe.CountLinks(&group,&single);
+        if(links != 4) {
+            std::printf("FAILED physical extent bound, grouped target %d: %lu links expected 4\n",
+                        groupedTarget,links);
+            ++failures;
+        }
+        if(group.m_clsExpansionBounds.m_dSourceRadius < 4.0 ||
+           group.m_clsExpansionBounds.m_dTargetRadius < 4.0) {
+            std::printf("FAILED physical descendants outside expansion bounds\n");
+            ++failures;
+        }
+    }
     // Harmonic potential x^3-3xy^2 gives field (3x^2-3y^2,-6xy,0).
     // Its mean x component on this triangle is 1; centroid sampling gives 5/3.
     // Translate through two arbitrary centers to exercise the downward shifts.
