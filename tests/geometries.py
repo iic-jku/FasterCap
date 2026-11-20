@@ -36,6 +36,16 @@ def _write_list(path, lines):
         f.write("".join(line + "\n" for line in lines))
 
 
+def write_material_record_case(directory, dimensions, records):
+    """One triangle or segment for C/D record parsing, without a numerical solve."""
+    panel = ("T", "plate", [(0, 0, 0), (1, 0, 0), (0, 1, 0)]) if dimensions == 3 else (
+        "S", "plate", [(0, 0), (1, 0)])
+    _write_panels(os.path.join(directory, "panels.txt"), "material record panel", [panel])
+    path = os.path.join(directory, "input.lst")
+    _write_list(path, ["* material records" if dimensions == 3 else "* 2D material records"] + records)
+    return path
+
+
 def cube_panels(name, side):
     """Six faces with outward normals, needed for the solver's averaged panel normals."""
     def v(x, y, z):
