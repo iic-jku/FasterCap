@@ -131,7 +131,7 @@ protected:
 	CAutoRefGlobalVars m_clsGlobalVars;
 	unsigned long m_ulPanelNum;
 	unsigned long m_ulNumOfLeaves;
-	CAutoPanel **m_clsBlockPrecondElements;
+	CAutoElement **m_clsBlockPrecondElements;
 	double (*m_pdBlockPrecond)[SOLVE_MAX_BLOCK_PRECOND_NUM];
 	unsigned char *m_pucBlockPrecondDim;
 	double (*m_pclsTmpCapMtx)[SOLVE_MAX_SUPER_PRECOND_NUM];

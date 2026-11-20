@@ -1471,7 +1471,7 @@ int CSolveCap::AllocateMemory()
 		// block preconditioner elements
 		if(m_clsBlockPrecondElements == NULL) {
 			// SAFENEW_ARRAY_RET(TYPE, VAR, LEN, MEM)
-			SAFENEW_ARRAY_RET(CAutoPanel*, m_clsBlockPrecondElements, SOLVE_MAX_BLOCK_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
+			SAFENEW_ARRAY_RET(CAutoElement*, m_clsBlockPrecondElements, SOLVE_MAX_BLOCK_PRECOND_NUM, g_clsMemUsage.m_ulPrecondMem)
 		}
 		// block preconditioner
 		if(m_pdBlockPrecond != NULL) {
@@ -1783,7 +1783,7 @@ void CSolveCap::RecurseComputePrecond(CAutoElement* element)
 
 		// only if using Block precond, store current leaf element in the block precond elements array
 		if( (m_clsGlobalVars.m_ucPrecondType & AUTOREFINE_PRECOND_BLOCK) != 0 ) {
-			m_clsBlockPrecondElements[m_uiBlockPreNum] = (CAutoPanel*)element;
+			m_clsBlockPrecondElements[m_uiBlockPreNum] = element;
 			m_uiBlockPreNum++;
 		}
 
@@ -1945,14 +1945,20 @@ void CSolveCap::ComputeBlockPrecond()
 		for(j = i; j < m_uiBlockPreNum; j++) {
 			// if self potential
 			if( i == j ) {
-				m_clsMulthier.SelfPotential(m_clsBlockPrecondElements[i], &potestim1, &potestim2);
-				// store only the real part; the super preconditioner in case of complex capacitance matrix
-				// will be used to precondition only the real part of the potential matrix, since this is
-				// the one compressed with the hierarchical method
-				m_pclsSupPotMtx[i][i] = potestim1;
+				// Reuse the assembled real diagonal: it already has this leaf's
+				// material and the correct 2D/3D self kernel.
+				long index = m_clsBlockPrecondElements[i]->m_lIndex[AUTOREFINE_HIER_PRE_0_LEVEL];
+				m_pclsSupPotMtx[i][i] = m_clsMulthier.m_clsSelfPotCoeff[index];
 			}
 			else {
-				isPotValid = m_clsMulthier.PotEstimateOpt(m_clsBlockPrecondElements[i], m_clsBlockPrecondElements[j], potestim1, potestim2, AUTOREFINE_PRECOND_BLOCK);
+				if(g_ucSolverType == SOLVERGLOBAL_3DSOLVER) {
+					isPotValid = m_clsMulthier.PotEstimateOpt((CAutoPanel*)m_clsBlockPrecondElements[i],
+						(CAutoPanel*)m_clsBlockPrecondElements[j], potestim1, potestim2, AUTOREFINE_PRECOND_BLOCK);
+				}
+				else {
+					isPotValid = m_clsMulthier.PotEstimateOpt((CAutoSegment*)m_clsBlockPrecondElements[i],
+						(CAutoSegment*)m_clsBlockPrecondElements[j], potestim1, potestim2, AUTOREFINE_PRECOND_BLOCK);
+				}
 
 				if(isPotValid != AUTOREFINE_NO_ERROR) {
 					ErrMsg("Error: invalid potential calculation during two-levels preconditioner calculation\n");
@@ -2491,13 +2497,19 @@ void CSolveCap::ComputePrecondVectFast(CLin_Vector *Pq, CLin_Vector *q, unsigned
 		// block preconditioner
 		//
 
-		leavesNum = m_pucBlockPrecondDim[0];
-		for(k=0; k<(long)m_clsMulthier.GetPanelNum(AUTOREFINE_HIER_PRE_0_LEVEL); k += leavesNum) {
-			leavesNum = m_pucBlockPrecondDim[k];
-			for(i=0; i < (long)leavesNum; i++) {
-				(*Pq)[i+k] = 0.0;
-				for(j = 0; j < (long)leavesNum; j++) {
-					(*Pq)[i+k] += m_pdBlockPrecond[i+k][j] * (*q)[j+k];
+		// For complex systems apply diag(B,B), just as Jacobi applies
+		// its real inverse to both halves of the real block representation.
+		const long panelNum = (long)m_clsMulthier.GetPanelNum(AUTOREFINE_HIER_PRE_0_LEVEL);
+		const int parts = m_clsGlobalVars.m_ucHasCmplxPerm == AUTOREFINE_REAL_PERM ? 1 : 2;
+		for(int part=0; part<parts; ++part) {
+			long offset = part * panelNum;
+			for(k=0; k<panelNum; k += leavesNum) {
+				leavesNum = m_pucBlockPrecondDim[k];
+				for(i=0; i < (long)leavesNum; i++) {
+					(*Pq)[offset+i+k] = 0.0;
+					for(j = 0; j < (long)leavesNum; j++) {
+						(*Pq)[offset+i+k] += m_pdBlockPrecond[i+k][j] * (*q)[offset+j+k];
+					}
 				}
 			}
 		}

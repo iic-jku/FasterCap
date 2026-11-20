@@ -367,14 +367,14 @@ def write_bowtie_quad(directory):
     return path
 
 
-def write_coated_coax(directory):
+def write_coated_coax(directory, segments=COAX_SEGMENTS):
     """2D coaxial cable whose inner conductor is coated with a dielectric."""
     _write_panels(os.path.join(directory, "inner.txt"), "inner conductor",
-                  circle_segments("inner", RADIUS, COAX_SEGMENTS))
+                  circle_segments("inner", RADIUS, segments))
     _write_panels(os.path.join(directory, "coat.txt"), "coat",
-                  circle_segments("coat", COAX_COAT_RADIUS, COAX_SEGMENTS))
+                  circle_segments("coat", COAX_COAT_RADIUS, segments))
     _write_panels(os.path.join(directory, "outer.txt"), "outer conductor",
-                  circle_segments("outer", COAX_OUTER_RADIUS, COAX_SEGMENTS))
+                  circle_segments("outer", COAX_OUTER_RADIUS, segments))
     path = os.path.join(directory, "coated_coax.lst")
     # "2D" in the first line selects the 2D solver; the reference point, the center, is on the
     # side of the first permittivity, the coat
